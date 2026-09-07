@@ -1,0 +1,19 @@
+[
+  {
+    "videoId": "REPLACE_WITH_LOCAL_VIDEO_ID",
+    "origin": "studio_csv",
+    "windowDays": 7,
+    "complete": true,
+    "startDate": "2026-08-01",
+    "endDate": "2026-08-07",
+    "views": null,
+    "engagedViews": 1000,
+    "likes": null,
+    "comments": null,
+    "shares": null,
+    "subscribersGained": null,
+    "averageViewDuration": null,
+    "averageViewPercentage": null,
+    "retention": []
+  }
+]

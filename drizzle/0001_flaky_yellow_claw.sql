@@ -1,0 +1,1 @@
+ALTER TABLE `workspaces` ADD `schema_version` integer DEFAULT 2 NOT NULL;

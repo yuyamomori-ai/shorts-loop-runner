@@ -1,0 +1,15 @@
+node_modules
+data
+.git
+.env
+.sites-runtime
+work
+
+.env.*
+*.pem
+*.key
+.wrangler
+.next
+local-dist
+dist
+outputs
