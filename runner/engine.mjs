@@ -38,10 +38,12 @@ export class Engine {
  publicState(){const s=this.store.read();delete s.assetSearchCache;delete s.spendGuard;for(const d of [s.live,s.demo])for(const v of d.videos){v.hasUploadSession=!!v.uploadSession;delete v.uploadSession;delete v.uploadIntent;delete v.approvedDigest;if(v.videoFile)v.videoFile=existsSync(v.videoFile);if(v.sourceEvidence)delete v.sourceEvidence;}for(const d of [s.live,s.demo])for(const a of d.assets){if(a.file)a.file=true;delete a.downloadUrl;delete a.providerResponse;}return {state:s,capabilities:this.capabilities(),automation:automationReadiness(s,this.capabilities())};}
  tryAutoStart(){let started=false;this.store.update(s=>{started=startWhenReady(s,this.capabilities());if(started)log(s.live,'start','YouTube接続後の自動運転を開始しました。');});if(started)console.log('ShortLOOP automation: running; mode=auto; privacy='+this.store.read().settings.privacy);return started;}
  stop(error){this.store.update(s=>{pauseAutomation(s,String(error.message||error));delete s.automation.retryAt;log(s.live,'stop',String(error.message||error).slice(0,800));});}
+ progress(stage,id=this.activeVideoId,extra={}){const s=this.store.read(),v=s.live.videos.find(x=>x.id===id);console.log('ShortLOOP progress: '+JSON.stringify({at:now(),stage,videoId:v?.id||id||null,title:v?.title||null,status:v?.status||null,...extra}));}
  async job(action,payload={}){
   const owner=uid();assert(this.store.acquire('pipeline',owner,120),'別の制作・送信処理が実行中です。');this.running=true;const heartbeat=setInterval(()=>this.store.db.prepare('UPDATE leases SET expires=? WHERE name=? AND owner=?').run(Date.now()+120000,'pipeline',owner),30000);
   try{if(action==='validate'){const {runAcceptance}=await import('./acceptance.mjs');const report=await runAcceptance(this,payload);this.store.update(s=>{s.visualAcceptance=report;});return;}if(action==='generate')await this.generate(payload.count||1,payload.contentType||'auto');else if(action==='render'||action==='preview')await this.render(payload.id,action==='preview',false,!!payload.lightweight);else if(action==='upload')await this.upload(payload.id);else if(action==='sync')await this.sync();else if(action==='tick')await this.tick();else if(action==='schedulePublished')await this.schedulePublished(payload.id,payload.publishAt);else if(action==='channel')await this.channel();else if(action==='discoverAsset')await discoverAsset(this.store,payload.query||'animal nature');else throw Error('処理が見つかりません。');this.store.update(s=>{if(!s.automation.retryAt||Date.parse(s.automation.retryAt)<=Date.now()){delete s.automation.retryAt;s.automation.retryCount=0;if(s.automation.phase==='running')s.automation.reason=null;}});}
   catch(e){
+   const failedId=payload.id||this.activeVideoId||this.pendingDraft?.id,failed=this.store.read().live.videos.find(x=>x.id===failedId);this.progress('interrupted',failedId,{code:e.code||e.status||null,reason:String(e.message).slice(0,1500),facts:failed?.factCheck||null,visual:failed?.visualQa||null});
    const monthly=['MONTHLY_AI_BUDGET','AI_MONTHLY_LIMIT'].includes(e.code);
    const retry=(monthly||e.code==='AI_BILLING'||e.code==='DAILY_AI_BUDGET'||e.status===429||e.status>=500||e.name==='TimeoutError'||['ECONNRESET','ETIMEDOUT','ENOTFOUND'].includes(e.cause?.code));
    if(retry){this.store.update(s=>{const v=s.live.videos.find(x=>x.id===(payload.id||this.activeVideoId||this.pendingDraft?.id));if(v&&!v.youtubeId){if(v.status==='rendering'||v.status==='blocked'&&!v.uploadIntent)v.status='draft';if(v.status==='uploading')v.status='approved';}s.automation.retryCount=(s.automation.retryCount||0)+1;const delay=e.code==='AI_BILLING'?6*3600000:Math.min(1800000,30000*2**Math.min(s.automation.retryCount,6));s.automation.retryAt=monthly?(e.retryAt||nextBudgetMonth(now())):e.code==='DAILY_AI_BUDGET'?new Date(new Date().setUTCHours(24,0,10,0)).toISOString():new Date(Date.now()+delay).toISOString();s.automation.reason=monthly?'月額のAI制作枠に達しました。上限を引き上げず、翌月まで新規生成を待機します。':e.code==='AI_BILLING'?'OpenAI APIの残高・利用上限の確認が必要です。6時間後に自動再試行します。':'一時的な通信・利用枠の問題です。自動で再試行します。';log(s.live,'retry',s.automation.reason);});console.log('ShortLOOP retry: '+JSON.stringify({code:e.code||e.status,retryAt:this.store.read().automation.retryAt,reason:this.store.read().automation.reason}));this.pendingDraft=null;throw e;}
@@ -92,7 +94,7 @@ export class Engine {
    const brief={requestedTopic:options.topic||null,visualFirst:true,sceneSeconds:base.sceneSeconds,visualStyle:base.visualStyle,contentType:type,captionStyle:base.captionStyle,narrationSpeed:base.narrationSpeed,editingStyle:base.editingStyle,genre:base.genre,hook:base.hook,structure:base.structure,targetSeconds:base.duration,postingHour:base.hour,experiment:base.experimentId||null,memory:s.settings.derivedApproved?d.memory:{summary:'初期探索'},avoid:d.videos.slice(0,100).map(v=>({topic:v.topic,title:v.title}))};
    const localization=type==='B'?`TYPE Bの日本語独自解説。素材の観察結果=${JSON.stringify(inspection)}。素材提供者情報=${JSON.stringify({title:asset.title,context:asset.context})}。直訳転載は禁止。状況説明→独自のツッコミ→一次資料による背景/科学/文化の補足→オチを作る。人物の気持ちや事件の経緯を創作しない。不明点は不明のまま。ストックは『参考映像』と明示。各segmentにeffectをzoom|slow|replay|highlight|cleanから指定し、calloutを18文字以下で任意指定。素材で視認できる事実はsourceIdsにassetを使える。科学的事実は取得した研究URLのIDを使う。`:'';
    const prompt=VISUAL_SCHEMA+benchmarkPrompt(references)+'\n'+localization+`日本語の雑学・心理学・科学Shortsを1本企画してください。毎回新規の異なるテーマ。一次資料をweb searchで実際に検索。薬・治療・診断・法律・投資助言を除外。誇大な99%や証明済み表現を禁止。研究の条件と限界を短く含める。30%探索の企画指定を尊重。指定構成を台本に反映。フックは1〜2秒で読める15文字以内。全体20〜60秒・6〜8セグメント・原則160〜240日本語文字、自然な読み上げで25〜45秒。構成 answer_first は最初の本文で答えを出す。experiment は研究方法から具体化。story は問い→説明→結論。指定:${JSON.stringify(brief)}\nJSON形式:{"topic":"独自の短いキーワード","title":"100文字以内","genre":"${base.genre}","hook":"${base.hook}","structure":"${base.structure}","segments":[{"text":"読み上げ台本","role":"hook|body|answer|cta","sourceIds":["s1"]}],"sources":[{"id":"s1","url":"一次情報URL","title":"資料名","publisher":"研究者/組織","summary":"出典が支持する内容"}],"risk":"none"}。心理学・記憶は独立した一次研究または公的解説を2件以上。引用文を長く複製せず日本語で独自に説明。事実のないCTAのsourceIdsは空配列可。`;
-   this.ai.videoId=base.id;const result=await this.ai.response(prompt,{search:true,images:references.map(r=>r.thumbnail).filter(Boolean)});const x=result.value;
+   this.progress('planning',base.id,{genre:base.genre});this.ai.videoId=base.id;const result=await this.ai.response(prompt,{search:true,images:references.map(r=>r.thumbnail).filter(Boolean)});const x=result.value;
    assert(typeof x.title==='string'&&x.title.length<=100&&x.title.length>0&&!/[<>]/.test(x.title),'生成タイトルが不正です。');
    assert(x.risk==='none','専門的判断またはポリシー上の確認が必要なテーマです。');
    assert(Array.isArray(x.segments)&&x.segments.length>=4&&x.segments.length<=10&&x.segments.every(y=>typeof y.text==='string'&&y.text.length>0&&y.text.length<=150&&Array.isArray(y.sourceIds)),'台本の形式が不正です。');
@@ -104,7 +106,7 @@ export class Engine {
    const v={...base,benchmarkTrial:normalizeBenchmarkTrial(x.benchmarkTrial,references),topic:String(x.topic||x.title).slice(0,120),title:x.title,genre:x.genre,hook:x.hook,structure:x.structure,segments:x.segments.map(y=>({text:y.text,role:['hook','body','answer','cta'].includes(y.role)?y.role:'body',sourceIds:y.sourceIds,...normalizeVisual(y)})),sources:x.sources.map(a=>({id:a.id,url:a.url,title:String(a.title).slice(0,300),publisher:String(a.publisher).slice(0,200),summary:String(a.summary).slice(0,600)})),duration:base.duration,durationBand:base.durationBand,hour:base.hour,privacy:s.settings.privacy,madeForKids:s.settings.madeForKids,description:'',qa:{facts:'pending',rights:'pending',technical:'pending',visual:'pending'},createdAt:now()};delete v.risk;
    assert(!d.videos.some(old=>old.topic===v.topic||similarity(videoText(old),videoText(v))>.6),'過去の台本と内容が類似しています。人間の確認が必要です。');
    this.store.update(s=>{this.reserveSchedule(s,v);s.live.videos.unshift(v);if(base.experimentId){const e=s.live.experiments.find(e=>e.id===base.experimentId);e.assignments.push({videoId:v.id,arm:base.experimentArm});}log(s.live,'plan',`AI企画「${v.title}」を作成。戦略 v${v.strategyVersion}。`);});
-   await this.ensureVisualPlan(v.id);await this.verify(v.id);this.pendingDraft=null;
+   this.progress('plan-created',v.id,{sources:v.sources.map(x=>x.url)});await this.ensureVisualPlan(v.id);await this.verify(v.id);this.progress('facts-passed',v.id);this.pendingDraft=null;
   }
  }
  async ensureVisualPlan(id){
@@ -152,6 +154,7 @@ export class Engine {
  }
  async render(id,preview=false,repaired=false,lightweight=false){
   this.activeVideoId=id;this.ai.videoId=id;
+  this.progress('rendering',id);
   let v=this.store.read().live.videos.find(x=>x.id===id);assert(v&&!v.synthetic,'対象動画がありません。');
   assert(!v.uploadIntent&&!v.youtubeId&&!['published','uploading','scheduled'].includes(v.status),'送信済み動画は再生成できません。');
   if(!lightweight){await this.ensureVisualPlan(id);v=this.store.read().live.videos.find(x=>x.id===id);if(v.qa.facts!=='passed'||v.verifiedContentHash!==hash(JSON.stringify(visualClaims(v))))await this.verify(id);}
@@ -165,13 +168,16 @@ export class Engine {
    const limit=lightweight?0:Math.max(0,Math.min(2,Number(process.env.SHORTSLOOP_VISUAL_REPAIRS??2)));
    for(let attempt=0;attempt<=limit;attempt++){
     result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,repair:attempt,retainAudio:true});
+    this.progress('render-encoded',id,{attempt,duration:result.duration,scenes:result.manifest.sceneCount,diagrams:result.manifest.explanationCount,narration:result.manifest.narrationVerified,mechanicalQa:result.manifest.mechanicalQa});
     visualQa=lightweight?{passed:false,reason:'音声なしの軽量プレビュー'}:await this.reviewVisual(v,result);
+    this.progress('visual-review',id,{review:visualQa});
     this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.visualQa=visualQa;x.visualRepairs=attempt;});
     if(visualQa.passed||lightweight)break;
     if(!repairableVisualReview(visualQa)||attempt===limit)throw Error('映像品質を確認できないため投稿を保留します。'+(visualQa.reason||''));
     this.store.update(s=>log(s.live,'visual-repair',`映像の自動修正 ${attempt+1}/${limit}: ${visualQa.issues.join(', ')}`));
    }
    if(!preview)originality=await this.reviewOriginality(v,result,assets[0]||null);
+   this.progress('originality-review',id,{review:originality});
    this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);Object.assign(x,{originality,visualQa,videoFile:result.videoFile,videoHash:result.videoHash,duration:result.duration,durationBand:bucketDuration(result.duration),segments:result.segments,scenePlan:result.scenePlan,visualFeatures:result.manifest,mediaManifest:result.manifest,status:preview?'draft':'review',containsSyntheticMedia:true});x.qa.technical=preview?'preview':'passed';x.qa.rights=lightweight?'pending':'passed';x.qa.visual=visualQa.passed?'passed':'pending';x.qa.assetRights=assets.every(assetReady)?'passed':'failed';x.error=preview?(lightweight?'音声なしの軽量プレビュー。投稿はできません。':'AI音声付き完成プレビュー。投稿用制作で最終審査します。'):null;log(s.live,'render',`「${x.title}」${result.manifest.sceneCount}シーン / 説明図${result.manifest.explanationCount} / AI音声${result.manifest.narrationVerified?'あり':'なし'}`);});
    if(!preview&&!originalityPass(originality)){
     if(!repaired&&originality?.copyrightRisk<=15&&originality?.reusedRisk<=40&&(v.originalityRepairs||0)<1){await this.repairOriginality(id,originality);await this.render(id,false,true);}
@@ -205,7 +211,7 @@ export class Engine {
    this.store.update(s=>{s.live.videos.find(x=>x.id===id).uploadSession=session;});
   }else{
    const status=await fetch(session,{method:'PUT',signal:AbortSignal.timeout(30000),headers:{Authorization:`Bearer ${token}`,'Content-Length':'0','Content-Range':`bytes */${bytes.length}`}});
-   if(status.ok){this.completeUpload(id,await status.json());return;}
+   if(status.ok){this.completeUpload(id,await status.json());await this.confirmPublication(id,token);return;}
    assert(status.status===308,'前回の送信状態を確認できません。自動再投稿は停止しています。');offset=Number(status.headers.get('range')?.match(/-(\d+)$/)?.[1]??-1)+1;
   }
   const chunkSize=8*1024*1024;
@@ -213,7 +219,7 @@ export class Engine {
    if(automatic)assert(!this.store.read().settings.paused,'一時停止のため送信を中断しました。');
    const end=Math.min(offset+chunkSize,bytes.length)-1;let r;
    try{r=await fetch(session,{method:'PUT',signal:AbortSignal.timeout(120000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'video/mp4','Content-Length':String(end-offset+1),'Content-Range':`bytes ${offset}-${end}/${bytes.length}`},body:bytes.subarray(offset,end+1)});}catch{throw new Error('送信応答を取得できません。再度送信すると保存済みセッションの状態を確認して再開します。');}
-   if(r.ok){this.completeUpload(id,await r.json());return;}
+   if(r.ok){this.completeUpload(id,await r.json());await this.confirmPublication(id,token);return;}
    assert(r.status===308,`送信が停止しました (${r.status})。セッションを保存しました。`);
    const next=Number(r.headers.get('range')?.match(/-(\d+)$/)?.[1]??-1)+1;assert(next>offset,'送信の進行を確認できません。');offset=next;
   }
@@ -234,6 +240,16 @@ export class Engine {
    delete v.uploadSession;
    log(s.live,'upload',accepted?`「${v.title}」の${scheduled?'予約公開':v.actualPrivacy==='public'?'全体公開':v.actualPrivacy==='private'?'非公開':'限定公開'}をYouTubeが受理しました。`:v.error);
   });
+  const v=this.store.read().live.videos.find(v=>v.id===id);this.progress('upload-accepted',id,{youtubeId:v.youtubeId,actualPrivacy:v.actualPrivacy,error:v.error||null});
+ }
+ async confirmPublication(id,token){
+  const v=this.store.read().live.videos.find(v=>v.id===id);if(!v?.youtubeId||v.status==='blocked'||v.privacy!=='public'||v.publishAt)return;
+  const r=await this.youtube.request('videos',{part:'status,processingDetails',id:v.youtubeId},token),item=r.items?.find(x=>x.id===v.youtubeId);assert(item,'送信済み動画をYouTube側で確認できません。動画IDを保持して確認を待ちます。');
+  const status=item.status||{},processing=item.processingDetails?.processingStatus||null;
+  const failed=['failed','rejected','deleted'].includes(status.uploadStatus)||['failed','terminated'].includes(processing);
+  const visible=status.privacyStatus==='public',processed=status.uploadStatus==='processed'||processing==='succeeded';
+  this.store.update(s=>{const x=s.live.videos.find(v=>v.id===id);x.publicationCheck={checkedAt:now(),privacy:status.privacyStatus,uploadStatus:status.uploadStatus,processingStatus:processing,verified:visible&&processed};if(visible&&processed)x.publicVerifiedAt=now();if(failed||!visible){x.status='blocked';x.error='YouTube側の処理・公開状態を確認してください。送信済み動画IDを保持し、再投稿はしません。';pauseAutomation(s,x.error);}});
+  this.progress(visible&&processed?'public-verified':'public-processing',id,{youtubeId:v.youtubeId,privacy:status.privacyStatus,uploadStatus:status.uploadStatus,processing,failed});
  }
  async sync(){
   await this.channel();
@@ -273,14 +289,17 @@ export class Engine {
   let s=this.store.read();if(process.env.SHORTSLOOP_PUBLISH_HOLD==='true'||s.settings.paused||s.automation?.retryAt&&Date.parse(s.automation.retryAt)>Date.now())return;this.store.update(s=>{s.automation.lastHeartbeatAt=now();delete s.automation.retryAt;});
   if(this.youtube.connected()&&(!s.lastSync||Date.now()-Date.parse(s.lastSync)>86400000))await this.sync();
   s=this.store.read();if(s.settings.paused)return;
+  for(const v of s.live.videos.filter(v=>v.youtubeId&&v.status==='published'&&v.privacy==='public'&&!v.publishAt&&!v.publicVerifiedAt))await this.confirmPublication(v.id);
+  if(this.store.read().settings.paused)return;
   const local=new Date();const day=dateIn(local,'Asia/Tokyo');const hour=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(local);
   // Prepare ahead of due times. A restart can't duplicate a date-keyed daily plan.
-  if(s.lastPlanDay!==day){const made=s.live.videos.filter(v=>dayOf(v.createdAt)===day&&!['rejected','blocked'].includes(v.status)).length;const remaining=Math.max(0,s.settings.dailyLimit-made);if(remaining>0){if(this.ai.key)await this.generate(remaining);else this.store.update(s=>plan(s.live,remaining));}this.store.update(s=>{s.lastPlanDay=day;});}
+  if(s.lastPlanDay!==day){const made=s.live.videos.filter(v=>dayOf(v.createdAt)===day&&!['rejected','blocked'].includes(v.status)).length;const remaining=Math.max(0,s.settings.dailyLimit-made);if(remaining>0){if(this.ai.key)await this.generate(1);else this.store.update(s=>plan(s.live,1));}if(remaining<=1)this.store.update(s=>{s.lastPlanDay=day;});}
   for(const v of this.store.read().live.videos.filter(v=>v.status==='draft')){if(this.store.read().settings.paused)return;await this.render(v.id);}
   s=this.store.read();if(s.settings.mode==='auto')this.store.update(s=>{for(const v of s.live.videos.filter(x=>x.status==='review')){if(!blockers(v,true).length){v.status='approved';v.approvedRevision=v.revision;v.approvedDigest=digestable(v);v.approvedAt=now();v.autoApproved=true;}}});
   s=this.store.read();const delivered=(s.deliveries||[]).filter(x=>x.day===day).length;const timePattern=s.settings.derivedApproved?s.live.memory.patterns.find(p=>p.dimension==='hour'&&p.effect>=8&&p.n>=10):null;const times=timePattern?[...new Set([timePattern.value,...s.settings.times])].slice(0,s.settings.dailyLimit).sort():s.settings.times;const due=times.filter(t=>t<=hour).length;
   for(const v of s.live.videos.filter(x=>x.status==='approved'&&x.privacy===s.settings.privacy)){if(this.store.read().settings.paused)return;if(v.publishAt){if(Date.parse(v.publishAt)<=Date.now()+60000)throw Error('承認された予約日時を過ぎました。日時の再設定と再承認が必要です。');if(Date.parse(v.publishAt)<Date.now()+86400000)await this.upload(v.id,true);}else if(v.plannedAt?Date.parse(v.plannedAt)<=Date.now():due>delivered){await this.upload(v.id,true);break;}}
   this.housekeep();
+  const current=this.store.read(),summary=current.live.videos.slice(0,6).map(v=>({id:v.id,title:v.title,status:v.status,qa:v.qa,error:v.error||null,youtubeId:v.youtubeId||null,privacy:v.actualPrivacy||v.privacy,plannedAt:v.plannedAt||null,verifiedAt:v.publicVerifiedAt||null}));const fingerprint=JSON.stringify(summary);if(this.lastProgressSnapshot!==fingerprint){this.lastProgressSnapshot=fingerprint;this.progress('queue',null,{videos:summary});}
  }
  housekeep(){const purged=new Set(collectGeneratedMedia(this.store.directory,this.store.read().live.videos));this.store.update(s=>{purgeBenchmarks(s);for(const v of s.live.videos)if(purged.has(v.id)){delete v.videoFile;v.mediaPurgedAt=now();}if(purged.size)log(s.live,'storage',`投稿済み動画${purged.size}本のローカル映像を整理しました。台本・出典・実績は保存しています。`);const expired=new Set(s.live.videos.filter(v=>v.youtubeId&&Date.now()-Date.parse(v.authorizationCheckedAt||v.uploadedAt||v.createdAt)>30*86400000).map(v=>v.id));const before=s.live.metrics.length;s.live.metrics=s.live.metrics.filter(m=>!expired.has(m.videoId)&&Date.now()-Date.parse(m.fetchedAt)<1095*86400000);if(s.live.metrics.length!==before){s.live.memory=initialState().live.memory;for(const v of s.live.videos){for(const key of ['scores','analysis','aiAnalysis','lastAnalyzedHash','dropPoints'])delete v[key];}s.live.experiments=[];}if(s.channel&&Date.now()-Date.parse(s.channel.fetchedAt)>30*86400000)delete s.channel;});}
  async disconnect(){this.store.update(s=>{delete s.benchmarkLibrary;for(const v of s.live.videos)delete v.benchmarkTrial;});if(existsSync(this.youtube.tokenFile)){const token=readToken(this.store.directory).refresh_token;try{await fetch('https://oauth2.googleapis.com/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token}),signal:AbortSignal.timeout(15000)});}catch{}unlinkSync(this.youtube.tokenFile);}this.store.update(s=>{applyAction(s,'deleteApiData',{},'live');pauseAutomation(s,'YouTube接続を解除しました。',true);delete s.automation.verifiedEmail;log(s.live,'disconnect','YouTube接続と取得データを削除しました。');});}

@@ -47,3 +47,16 @@ test('legacy missing-stock hold can recover once using sourced Type A without cl
  store.update(s=>{Object.assign(s.automation,{phase:'attention',reason:'著作権確認に失敗'});});new Engine(store);assert.equal(store.read().automation.phase,'attention');
  }finally{store.close();rmSync(dir,{recursive:true,force:true});}
 });
+test('public success is verified from YouTube processing status without uploading again',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'loop-public-status-')),store=new Store(dir),engine=new Engine(store);let calls=0;
+ try{store.update(s=>{s.live.videos.push({id:'new',title:'new',privacy:'public',status:'published',youtubeId:'youtube-new'});});
+ engine.youtube.request=async(path,params)=>{calls++;assert.equal(path,'videos');assert.equal(params.id,'youtube-new');return {items:[{id:'youtube-new',status:{privacyStatus:'public',uploadStatus:calls===1?'uploaded':'processed'},processingDetails:{processingStatus:calls===1?'processing':'succeeded'}}]};};
+ await engine.confirmPublication('new');assert.equal(store.read().live.videos[0].publicVerifiedAt,undefined);
+ await engine.confirmPublication('new');assert(store.read().live.videos[0].publicVerifiedAt);assert.equal(calls,2);
+ engine.youtube.request=async()=>({items:[{id:'youtube-new',status:{privacyStatus:'private',uploadStatus:'processed'}}]});await engine.confirmPublication('new');const s=store.read();assert.equal(s.live.videos[0].youtubeId,'youtube-new');assert.equal(s.live.videos[0].status,'blocked');assert.equal(s.settings.paused,true);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('an explicit funded public request clears the old billing wait without altering the budget ledger',()=>{
+ const s=armed();Object.assign(s.automation,{phase:'running',reason:'OpenAI APIの残高・利用上限の確認が必要です。',retryAt:'2099-01-01T00:00:00Z'});s.spendGuard={version:1,months:{fixture:{requests:[{bookedUsd:1}]}}};const ledger=JSON.stringify(s.spendGuard);
+ assert(requestPublicAutopilot(s,'funded-request'));assert.equal(s.automation.retryAt,undefined);assert.equal(JSON.stringify(s.spendGuard),ledger);assert.equal(s.settings.privacy,'public');
+});
