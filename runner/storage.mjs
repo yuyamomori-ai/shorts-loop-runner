@@ -14,7 +14,7 @@ function ownedDirectory(directory,id) {
 export function cleanRenderIntermediates(directory,id) {
   const dir=ownedDirectory(directory,id);if(!dir)return;
   for(const name of readdirSync(dir)) {
-    if(!/^(speech-\d+\.wav|scene-\d+\.mp4|music\.wav|background\.mp4|scenes\.txt)$/.test(name))continue;
+    if(!/^(speech-\d+\.(wav|json)(\.tmp)?|scene-\d+\.mp4|music\.wav|background\.mp4|scenes\.txt|video-rendering\.mp4)$/.test(name))continue;
     const file=join(dir,name);if(lstatSync(file).isFile())rmSync(file);
   }
 }
