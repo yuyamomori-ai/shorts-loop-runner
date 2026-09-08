@@ -27,26 +27,32 @@ export async function runAcceptance(liveEngine,{runId='visual-v1'}={}){
   writeFileSync(reportFile,JSON.stringify(saved,null,2));return saved;
  }
  const store=new Store(directory),engine=new Engine(store);
- engine.ai=new OpenAI(liveEngine.store); // Saved production OpenAI key, same daily ledger.
+ engine.ai=new OpenAI(liveEngine.store);
+ engine.youtube=liveEngine.youtube;
+ engine.upload=async()=>{throw Error('受入テストではアップロードを実行できません。');};
+ engine.schedulePublished=engine.upload; // Saved production OpenAI key, same daily ledger.
  store.update(s=>{s.settings.paused=true;s.settings.privacy='private';s.settings.mode='review';s.automation.enabled=false;});
  const report={runId,startedAt:now(),status:'running',tests:[],preflight:checks,youtubeConnectionPreserved:checks.youtubeAuthorized};
  const progress=()=>liveEngine.store.update(s=>{s.visualAcceptance=report;});progress();
  try{
+  report.youtubeTokenRefreshPassed=checks.youtubeAuthorized;
   if(checks.errors.length)throw Error(checks.errors.join(' '));
   if(!engine.ai.key)throw Error('OpenAI接続が見つからず、実AI音声の検証を開始できません。');
   for(const spec of [{name:'science',genre:'科学',topic:'炭酸飲料の圧力と気泡。一次資料で根拠を確認できない場合は身近な光や温度の科学。'},{name:'knowledge',genre:'記憶',topic:'情報を入力して保持し、思い出す学習。研究対象と限界を明示。'}]){
    console.log('Visual acceptance: generating '+spec.name);
    report.currentTest=spec.name;progress();
-   await engine.generate(1,'A',spec);
-   const id=store.read().live.videos[0].id;
+   let id;try{
+   await engine.generate(1,'A',{...spec,skipReferences:true});
+   id=store.read().live.videos[0].id;
    await engine.render(id);
    const v=store.read().live.videos.find(v=>v.id===id),issues=blockers(v,true);
-   report.tests.push({name:spec.name,videoId:id,title:v.title,passed:!issues.length,issues,manifest:v.mediaManifest,visualQa:v.visualQa,facts:v.qa.facts,rights:v.qa.rights,originality:v.originality});
+   report.tests.push({name:spec.name,videoId:id,title:v.title,passed:!issues.length,issues,manifest:v.mediaManifest,segments:v.segments.map(({audio,...s})=>s),sources:v.sources,scenePlan:v.scenePlan,visualQa:v.visualQa,facts:v.qa.facts,rights:v.qa.rights,originality:v.originality});
    console.log('Visual acceptance: '+JSON.stringify({name:spec.name,passed:!issues.length,videoId:id,narration:v.mediaManifest.narration,scenes:v.mediaManifest.sceneCount,assets:v.mediaManifest.assetCount,diagrams:v.mediaManifest.diagramCount,seconds:v.duration,visualQa:v.visualQa.passed}));
-   if(issues.length)throw Error('生成動画が投稿前検査を通過しませんでした。');
+   }catch(e){report.tests.push({name:spec.name,videoId:id,passed:false,error:e.message});console.log('Visual acceptance: '+spec.name+' failed: '+e.message);if(e.code==='AI_BILLING'||e.code==='DAILY_AI_BUDGET'){report.error=e.message;report.errorCode=e.code;break;}}
+   writeFileSync(reportFile,JSON.stringify(report,null,2));
   }
-  report.status='passed';
+  report.status=report.tests.length===2&&report.tests.every(t=>t.passed)?'passed':'failed';
  }catch(e){report.status='failed';report.error=e.message;report.errorCode=e.code||null;console.log('Visual acceptance: failed: '+e.message);}
- finally{report.finishedAt=now();delete report.currentTest;writeFileSync(reportFile,JSON.stringify(report,null,2));progress();store.close();}
+ finally{report.finishedAt=now();delete report.currentTest;progress();writeFileSync(reportFile,JSON.stringify(report,null,2));store.close();}
  return report;
 }

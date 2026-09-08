@@ -1,6 +1,6 @@
 # Visual First production contract
 
-Billing exhaustion (`credit_balance_exhausted` / `insufficient_quota`) stops production without timed retries. Normal 429 rate limiting still uses backoff. The private acceptance report includes live YouTube authorization and renderer/font checks. After resolving a connection or billing issue, the dashboard can rerun the two isolated tests within the same daily AI budget; it never uploads them.
+Billing exhaustion (`credit_balance_exhausted` / `insufficient_quota`) defers production for six hours before a bounded automatic retry. Normal 429 rate limiting still uses backoff. The private acceptance report includes live YouTube authorization and renderer/font checks. After resolving a connection or billing issue, the dashboard can rerun the two isolated tests within the same daily AI budget; it never uploads them.
 
 Both A (knowledge with visual explanation) and B (footage with original commentary) use measured Japanese AI speech, short lower-screen captions, multiple visual scenes, and sourced explanatory graphics. Pexels is optional: absent stock produces original process/concept/comparison graphics, never a successful blank-background caption render. A production render that cannot meet the contract is held.
 
@@ -28,3 +28,11 @@ Visual features include scene timing, footage ratio, diagram/card counts, editin
 - Startup acceptance: real OpenAI planning, fact checking, speech, rendering, visual QA and originality checks in the deployed runtime.
 
 The inspected production host on 2026-09-08 was Railway, repository `yuyamomori-ai/shorts-loop-runner`, branch `main`, `Dockerfile.cloud`, volume `/app/data`, health endpoint `/healthz`. Do not create a new Render service or move the persistent volume merely because older instructions name Render. The same Docker runtime remains usable on Render.
+
+## Public automation and popular references
+
+New records default to public visibility. The explicit owner-request environment ID applies auto/public mode once, while subsequent user pauses and non-billing safety stops remain durable. This records a request to the YouTube API, never a claim of audit approval. Every upload response must confirm the requested visibility; a restricted private response retains the video ID and stops without a duplicate upload. The first new production video is submitted immediately after all quality gates pass; later videos use the normal schedule. Existing private records are not silently republished.
+
+Popular short-form reference candidates use official YouTube API statistics (at least 500,000 views, creator-tagged short-form, up to 180 seconds). Titles and thumbnails are observable; full-video editing, narration and competitor retention are unavailable and never inferred as measured facts. Each new plan refreshes selected references; discovery searches are bounded and cached. No social video/audio downloads occur. Derived reference use respects the existing YouTube approval setting. Reference observations and non-causal adoption hypotheses share the planning call, and expired API records and their derived notes are purged together.
+
+An optional expiring validation token grants GET access only to isolated acceptance reports and named output artifacts. It never grants access to production state, OAuth, general files, or posting actions.

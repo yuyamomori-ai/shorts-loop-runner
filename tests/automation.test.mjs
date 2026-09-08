@@ -4,13 +4,35 @@ import {mkdtempSync,rmSync,readFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {initialState,applyAction} from '../lib/core.mjs';
-import {initializeAutomation,startWhenReady,automationReadiness} from '../lib/automation.mjs';
+import {initializeAutomation,startWhenReady,automationReadiness,requestPublicAutopilot} from '../lib/automation.mjs';
 import {configureConnections,googleClient,aiKey} from '../runner/vault.mjs';
 import {OAuthFlow,readToken} from '../runner/oauth-flow.mjs';
 import {Store} from '../runner/store.mjs';
 import {Engine} from '../runner/engine.mjs';
 const ready={ai:true,renderer:true,scheduler:true,oauthConfigured:true,youtube:true,publicApproved:true,derivedApproved:true};
 const armed=()=>{const s=initialState();initializeAutomation(s,{enabled:true,targetEmail:'creator@example.com'});return s;};
+test('public autopilot request applies once, preserves safety stops and never invents API audit approval',()=>{
+ const s=armed();s.automation.verifiedEmail='creator@example.com';applyAction(s,'pause');
+ assert(requestPublicAutopilot(s,'owner-request-1'));assert.equal(s.settings.privacy,'public');assert.equal(s.settings.mode,'auto');assert.equal(s.settings.publicApproved,false);
+ assert(startWhenReady(s,{...ready,publicApproved:false}));applyAction(s,'pause');
+ assert.equal(requestPublicAutopilot(s,'owner-request-1'),false);assert.equal(startWhenReady(s,ready),false);
+ Object.assign(s.automation,{phase:'attention',reason:'著作権確認に失敗',userPaused:false});requestPublicAutopilot(s,'owner-request-2');assert.equal(startWhenReady(s,ready),false);
+ s.automation.reason='外部API 429: credit_balance_exhausted';requestPublicAutopilot(s,'owner-request-3');assert(startWhenReady(s,{...ready,publicApproved:false}));
+});
+test('public upload responses must confirm visibility; private fallback preserves ID and stops without reupload',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'loop-public-')),store=new Store(dir),engine=new Engine(store);
+ try{store.update(s=>{requestPublicAutopilot(s,'public-test');s.live.videos.push({id:'one',title:'one',privacy:'public',initialPublicRequestId:'public-test'},{id:'two',title:'two',privacy:'public'});});
+ engine.completeUpload('one',{id:'youtube-one',status:{privacyStatus:'public'}});let s=store.read();assert.equal(s.live.videos[0].everPublic,true);assert.equal(s.automation.firstPublicPending,false);
+ engine.completeUpload('two',{id:'youtube-two',status:{privacyStatus:'private'}});s=store.read();assert.equal(s.live.videos[1].youtubeId,'youtube-two');assert.equal(s.live.videos[1].status,'blocked');assert.equal(s.automation.phase,'attention');assert.equal(s.settings.paused,true);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('billing exhaustion retries conservatively and resumes after recovery',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'loop-billing-')),store=new Store(dir),engine=new Engine(store);
+ try{store.update(s=>{s.settings.paused=false;s.automation.phase='running';});engine.tick=async()=>{throw Object.assign(Error('credits'),{code:'AI_BILLING',status:429});};await assert.rejects(engine.job('tick'));
+ let s=store.read();assert.equal(s.settings.paused,false);assert(Date.parse(s.automation.retryAt)-Date.now()>5.9*3600000);
+ store.update(s=>{s.automation.retryAt=new Date(0).toISOString();});engine.tick=async()=>{};await engine.job('tick');s=store.read();assert.equal(s.automation.retryAt,undefined);assert.equal(s.automation.reason,null);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});
 test('OAuth completion starts the loop without a second start action',()=>{const s=armed();s.automation.verifiedEmail='creator@example.com';assert(startWhenReady(s,ready));assert.equal(s.settings.paused,false);assert.equal(s.settings.mode,'auto');assert.equal(s.settings.privacy,'public');assert.equal(startWhenReady(s,ready),false);});
 test('email text alone, absent runtime, and wrong account never start posting',()=>{for(const change of [{},{verifiedEmail:'other@example.com'}]){const s=armed();Object.assign(s.automation,change);assert.equal(startWhenReady(s,ready),false);}const s=armed();s.automation.verifiedEmail='creator@example.com';assert.equal(startWhenReady(s,{...ready,scheduler:false}),false);assert(automationReadiness(s,{...ready,scheduler:false}).missing.some(x=>x.key==='server'));});
 test('manual pause survives reconnection and state reinitialization',()=>{const s=armed();s.automation.verifiedEmail='creator@example.com';startWhenReady(s,ready);applyAction(s,'pause');initializeAutomation(s,{enabled:true});assert.equal(startWhenReady(s,ready),false);assert.equal(s.automation.userPaused,true);});
