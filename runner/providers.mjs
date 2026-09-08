@@ -20,25 +20,31 @@ export async function jsonFetch(url,options={}){
  const raw=await r.text();let j;try{j=JSON.parse(raw);}catch{j={};}
  if(!r.ok)throw apiError(r.status,j);return j;
 }
-const allowedHosts=['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','www.nasa.gov','science.nasa.gov','spaceplace.nasa.gov','www.nature.com','www.science.org','www.pnas.org','www.apa.org','www.ncbi.nlm.nih.gov','www.nih.gov','www.nist.gov','www.noaa.gov','www.jstage.jst.go.jp'];
+const allowedHosts=['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','eutils.ncbi.nlm.nih.gov','www.nasa.gov','science.nasa.gov','spaceplace.nasa.gov','www.nature.com','www.science.org','www.pnas.org','www.apa.org','www.ncbi.nlm.nih.gov','www.nih.gov','www.nist.gov','www.noaa.gov','www.jstage.jst.go.jp'];
 export function trustedSource(url){try{const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&(allowedHosts.includes(u.hostname)||allowedHosts.includes('www.'+u.hostname)||u.hostname.endsWith('.edu')||u.hostname.endsWith('.ac.jp')||u.hostname.endsWith('.go.jp'));}catch{return false;}}
 function publicAddress(address){return !(/^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|224\.|255\.|::|fc|fd|fe80:)/i.test(address));}
+function pubmedFallback(url){try{const u=new URL(url),id=u.hostname==='pubmed.ncbi.nlm.nih.gov'?u.pathname.match(/^\/(\d+)\/?$/)?.[1]:null;return id?`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${id}&retmode=xml`:null;}catch{return null;}}
+function plainText(raw){return raw.replace(/<(script|style|nav|header|footer)[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;|&apos;/g,"'").replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();}
 export async function sourceText(url){
- let current=url;
- for(let i=0;i<4;i++){
-  assert(trustedSource(current),'一次資料として許可されていないURLです。');
-  const ips=await lookup(new URL(current).hostname,{all:true});assert(ips.length&&ips.every(x=>publicAddress(x.address)),'外部公開の情報源ではありません。');
-  const r=await fetch(current,{redirect:'manual',signal:AbortSignal.timeout(20000),headers:{'User-Agent':'ShortsLoop/1.0 source-verification'}});
-  if([301,302,303,307,308].includes(r.status)){current=new URL(r.headers.get('location'),current).href;continue;}
-  assert(r.ok,'情報源を取得できません。');assert((r.headers.get('content-type')||'').includes('text/html'),'MVPの自動照合はHTMLの本文が対象です。');
-  let size=0;const chunks=[];for await(const c of r.body){size+=c.length;assert(size<2000000,'情報源が大きすぎます。');chunks.push(c);}
-  const raw=Buffer.concat(chunks).toString();
-  const plain=raw.replace(/<(script|style|nav|header|footer)[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
-  assert(plain.length>600&&!/Checking your browser|enable JavaScript.*continue|verify you are human/i.test(plain.slice(0,1500)),'情報源本文を確認できません。別の一次資料が必要です。');
-  const title=(raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'一次資料').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim().slice(0,300);
-  return {url:current,title,text:plain.slice(0,18000),sha256:hash(raw),fetchedAt:now()};
+ const candidates=[pubmedFallback(url),url].filter(Boolean);let lastError=null;
+ for(const candidate of candidates){
+  let current=candidate;
+  try{
+   for(let i=0;i<4;i++){
+    assert(trustedSource(current),'一次資料として許可されていないURLです。');
+    const host=new URL(current).hostname,ips=await lookup(host,{all:true});assert(ips.length&&ips.every(x=>publicAddress(x.address)),'外部公開の情報源ではありません。');
+    const r=await fetch(current,{redirect:'manual',signal:AbortSignal.timeout(20000),headers:{'User-Agent':'ShortsLoop/1.0 source-verification'}});
+    if([301,302,303,307,308].includes(r.status)){current=new URL(r.headers.get('location'),current).href;continue;}
+    assert(r.ok,'情報源を取得できません。');const contentType=(r.headers.get('content-type')||'').toLowerCase(),xml=host==='eutils.ncbi.nlm.nih.gov';assert(contentType.includes('text/html')||xml&&(contentType.includes('xml')||contentType.includes('text/plain')),'自動照合できない本文形式です。');
+    let size=0;const chunks=[];for await(const c of r.body){size+=c.length;assert(size<2000000,'情報源が大きすぎます。');chunks.push(c);}
+    const raw=Buffer.concat(chunks).toString(),plain=plainText(raw),minLength=xml?350:600;
+    assert(plain.length>minLength&&!/Checking your browser|enable JavaScript.*continue|verify you are human/i.test(plain.slice(0,1500)),'情報源本文を確認できません。別の一次資料が必要です。');
+    const title=(xml?(raw.match(/<ArticleTitle[^>]*>([\s\S]*?)<\/ArticleTitle>/i)?.[1]):(raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])||'一次資料').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim().slice(0,300);
+    return {url,title,text:plain.slice(0,18000),sha256:hash(raw),fetchedAt:now()};
+   }
+  }catch(e){lastError=e;}
  }
- throw new Error('情報源のリダイレクトを確認できません。');
+ throw lastError||new Error('情報源本文を確認できません。別の一次資料が必要です。');
 }
 export class OpenAI {
  constructor(store){this.store=store;this.key=aiKey(store.directory);this.model=process.env.OPENAI_MODEL||'gpt-5-mini';}
