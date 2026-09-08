@@ -57,7 +57,8 @@ export class OpenAI {
   if(search){body.max_tool_calls=MAX_SEARCH_CALLS;body.tools=[{type:'web_search',filters:{allowed_domains:['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','nasa.gov','science.org','nature.com','pnas.org','apa.org','nih.gov','nist.gov','noaa.gov','jstage.jst.go.jp']}}];body.include=['web_search_call.action.sources'];}
   const reservation=this.budget({kind:'response',model:this.model,search});let response;
   try{response=await jsonFetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){this.rejectRequest(reservation,e);throw e;}
-  this.recordUsage(reservation,{usage:response.usage,searchCalls:(response.output||[]).filter(x=>x.type==='web_search_call').length});assert(response.status!=='incomplete','AIの出力が途中で終了しました。');
+  this.recordUsage(reservation,{usage:response.usage,searchCalls:(response.output||[]).filter(x=>x.type==='web_search_call').length});
+  if(response.status==='incomplete')throw Object.assign(Error('AIの出力が途中で終了しました。'),{code:'AI_INCOMPLETE',status:503});
   const text=(response.output||[]).flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');
   let value;try{value=JSON.parse(text.replace(/^```json\s*|\s*```$/g,''));}catch{throw new Error('AIから有効なJSONを取得できませんでした。');}
   const sources=(response.output||[]).flatMap(x=>[...(x.action?.sources||[]),...(x.content||[]).flatMap(y=>y.annotations||[])]).filter(x=>x.url).map(x=>x.url);
