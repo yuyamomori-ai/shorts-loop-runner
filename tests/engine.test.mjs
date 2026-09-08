@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {initialState,plan,learn,demoData,applyAction,scores,blockers,digestable} from '../lib/core.mjs';
 import {Store} from '../runner/store.mjs';
 import {Engine,observationWindow,similarity} from '../runner/engine.mjs';
-import {trustedSource,hash} from '../runner/providers.mjs';
+import {trustedSource,hash,apiError} from '../runner/providers.mjs';
 test('curated planning persists unique topics and uses available source references',()=>{const s=initialState();plan(s.live,3);assert.equal(s.live.videos.length,3);plan(s.live,3);assert.equal(s.live.videos.length,4);assert.throws(()=>plan(s.live,1));assert(s.live.videos.every(v=>v.sources[0].url.startsWith('https:')));});
 test('no-data and small samples never create winning patterns',()=>{const s=initialState();learn(s.live,true);assert.equal(s.live.memory.patterns.length,0);assert.equal(s.live.memory.eligible,0);});
 test('synthetic observations cannot influence live learning or be uploaded',()=>{const d=demoData();assert.equal(d.memory.eligible,24);learn(d,true,false);assert.equal(d.memory.eligible,0);assert(blockers(d.videos[0]).some(x=>x.includes('検証用')));});
@@ -23,6 +23,17 @@ test('metadata edits invalidate approval and fact-check status',()=>{const s=ini
 test('fixed complete observation period handles Pacific date and latency',()=>{const w=observationWindow('2026-07-01T01:00:00Z',new Date('2026-07-15T12:00:00Z'));assert.equal(w.startDate,'2026-07-01');assert.equal(w.endDate,'2026-07-07');assert.equal(w.mature,true);assert.equal(observationWindow('2026-07-01T01:00:00Z',new Date('2026-07-08T12:00:00Z')).mature,false);});
 test('source allowlist rejects credentials, private addresses and hostname tricks',()=>{for(const url of ['http://nasa.gov','https://127.0.0.1','https://nasa.gov.evil.example/a','https://x@science.nasa.gov/a','https://science.nasa.gov:444/a'])assert.equal(trustedSource(url),false);assert.equal(trustedSource('https://science.nasa.gov/moon/tidal-locking/'),true);});
 test('Japanese near duplicates are detected',()=>{assert(similarity('人は記憶を思い出す練習で学びます','人は記憶を思い出す練習で学びます。')>.95);});
+test('billing exhaustion pauses production; transient rate limits remain retryable',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'shorts-billing-')),store=new Store(dir),engine=new Engine(store);
+ try{
+  store.update(s=>{s.automation.retryAt=new Date(Date.now()+60000).toISOString();});
+  engine.generate=async()=>{throw apiError(429,{error:{code:'credit_balance_exhausted'}});};
+  await assert.rejects(engine.job('generate'),e=>e.code==='AI_BILLING');
+  assert.equal(store.read().settings.paused,true);assert.equal(store.read().automation.phase,'attention');assert.equal(store.read().automation.retryAt,undefined);
+  engine.generate=async()=>{throw apiError(429,{error:{code:'rate_limit_exceeded'}});};
+  await assert.rejects(engine.job('generate'));assert(store.read().automation.retryAt);
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});
 test('SQLite state survives process-store restart and leases exclude a second worker',()=>{const dir=mkdtempSync(join(tmpdir(),'shorts-test-'));let store=new Store(dir);store.update(s=>plan(s.live,1));assert.equal(store.acquire('job','one'),true);assert.equal(store.acquire('job','two'),false);store.close();store=new Store(dir);assert.equal(store.read().live.videos.length,1);store.close();rmSync(dir,{recursive:true,force:true});});
 test('lost final upload response resumes saved session without a second insert',async()=>{const dir=mkdtempSync(join(tmpdir(),'shorts-upload-'));const store=new Store(dir);const engine=new Engine(store);const media=join(dir,'test.mp4');writeFileSync(media,Buffer.from('fake-media-for-transport-test'));let id;
  store.update(s=>{plan(s.live,1);const v=s.live.videos[0];id=v.id;Object.assign(v,{originality:{originality:90,commentary:90,editing:90,educational:90,entertainment:90,copyrightRisk:0,reusedRisk:0,confidence:1},videoFile:media,videoHash:hash(Buffer.from('fake-media-for-transport-test')),status:'review',qa:{facts:'passed',rights:'passed',technical:'passed',visual:'passed'},mediaManifest:{credit:'test'}});readyVisual(v);applyAction(s,'approve',{id});});engine.youtube.token=async()=>'test-token';const old=globalThis.fetch;let inserts=0,puts=0;

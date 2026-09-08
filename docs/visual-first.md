@@ -1,5 +1,7 @@
 # Visual First production contract
 
+Billing exhaustion (`credit_balance_exhausted` / `insufficient_quota`) stops production without timed retries. Normal 429 rate limiting still uses backoff. The private acceptance report includes live YouTube authorization and renderer/font checks. After resolving a connection or billing issue, the dashboard can rerun the two isolated tests within the same daily AI budget; it never uploads them.
+
 Both A (knowledge with visual explanation) and B (footage with original commentary) use measured Japanese AI speech, short lower-screen captions, multiple visual scenes, and sourced explanatory graphics. Pexels is optional: absent stock produces original process/concept/comparison graphics, never a successful blank-background caption render. A production render that cannot meet the contract is held.
 
 ## Planning and evidence
