@@ -7,7 +7,8 @@ import {blockers,now} from '../lib/core.mjs';
 import {run} from './render.mjs';
 
 async function preflight(liveEngine){
- const result={ffmpeg:false,ffprobe:false,japaneseFont:false,youtubeAuthorized:false,checkedAt:now(),errors:[]};
+ const a=liveEngine.store.read().automation||{};
+ const result={automation:{phase:a.phase,reason:a.reason,retryAt:a.retryAt,publicUploadRequested:!!a.publicUploadRequested},ffmpeg:false,ffprobe:false,japaneseFont:false,youtubeAuthorized:false,checkedAt:now(),errors:[]};
  for(const binary of ['ffmpeg','ffprobe'])try{await run(binary,['-version'],10000);result[binary]=true;}catch{result.errors.push(binary+'を起動できません。');}
  try{const font=await run('fc-match',[process.env.CAPTION_FONT||'Noto Sans CJK JP'],10000);result.japaneseFont=/NotoSansCJK|Noto Sans CJK|NotoSansJP|YuGoth|Meiryo|msgothic|ipa/i.test(font.out)||process.env.CAPTION_FONT_VERIFIED==='true';}catch{}
  if(!result.japaneseFont)result.errors.push('日本語フォントを確認できません。');

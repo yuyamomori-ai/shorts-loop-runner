@@ -65,7 +65,7 @@ const server=createServer(async(req,res)=>{
 });
 server.listen(PORT,HOST,()=>{
  console.log(`Shorts Loop: http://localhost:${PORT}`);
- console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase}));
+ console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase,stopReason:store.read().automation?.reason||null,retryAt:store.read().automation?.retryAt||null}));
  if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
   engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1'}).catch(e=>console.error('Visual validation stopped:',e.message));
  }else pump();
