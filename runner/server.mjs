@@ -15,10 +15,10 @@ if(existsSync(resolve(ROOT,'.env')))process.loadEnvFile(resolve(ROOT,'.env'));
 const HOST=process.env.HOST||'127.0.0.1',PORT=Number(process.env.PORT||8787),DATA=process.env.DATA_DIR||resolve(ROOT,'data');
 if(!['127.0.0.1','localhost','::1'].includes(HOST)&&!process.env.ENGINE_TOKEN&&process.env.TRUST_LOOPBACK_PROXY!=='true')throw Error('外部公開にはENGINE_TOKENが必要です。');
 const store=new Store(DATA),engine=new Engine(store),oauth=new OAuthFlow(store.directory);
-store.update(s=>{for(const v of s.live.videos){if(v.status==='uploading'){if(v.uploadSession)v.status='approved';else{v.status='blocked';v.error='前回の送信結果を確認する必要があります。';pauseAutomation(s,v.error);}}if(v.status==='rendering'){v.status='blocked';v.error='前回の動画制作が中断しました。再生成してください。';pauseAutomation(s,'前回の動画制作が中断しました。動画を確認してください。');}}});
+store.update(s=>{for(const v of s.live.videos){if(v.status==='uploading'){if(v.uploadSession)v.status='approved';else{v.status='blocked';v.error='前回の送信結果を確認する必要があります。';pauseAutomation(s,v.error);}}if(v.status==='rendering'&&!v.youtubeId&&!v.uploadIntent){v.status='draft';v.error='再起動で中断した制作を、保存済み音声から再試行します。';v.approvedRevision=null;delete v.approvedDigest;}}});
 engine.housekeep();
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.mp4':'video/mp4','.json':'application/json'};
-const pump=()=>{if(engine.running)return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
+const pump=()=>{if(engine.running||process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
 const secureEqual=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y);};
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');
@@ -60,6 +60,12 @@ const server=createServer(async(req,res)=>{
   const publicRoot=resolve(ROOT,'local-dist');let file=resolve(publicRoot,'.'+decodeURIComponent(url.pathname));assert(file.startsWith(publicRoot+'/')||file===publicRoot,'パスが不正です。');if(!existsSync(file)||statSync(file).isDirectory())file=resolve(publicRoot,'index.html');assert(existsSync(file),'画面を先にビルドしてください。npm run build:local');res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'"});createReadStream(file).pipe(res);
  }catch(e){json({error:e.message},400);}
 });
-server.listen(PORT,HOST,()=>{console.log(`Shorts Loop: http://localhost:${PORT}`);pump();});
+server.listen(PORT,HOST,()=>{
+ console.log(`Shorts Loop: http://localhost:${PORT}`);
+ console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,phase:store.read().automation?.phase}));
+ if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
+  engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1'}).catch(e=>console.error('Visual validation stopped:',e.message));
+ }else pump();
+});
 const timer=setInterval(pump,60000);
 let closing=false;function shutdown(){if(closing)return;closing=true;clearInterval(timer);server.close();const t=setInterval(()=>{if(!engine.running){clearInterval(t);store.close();process.exit(0);}},200);setTimeout(()=>process.exit(0),25000).unref();}process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
