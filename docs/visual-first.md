@@ -1,5 +1,9 @@
 # Visual First production contract
 
+An overlong opening receives one short rewrite before fact verification. Source URLs are normalized only for fragments and tracking parameters; document query parameters are preserved. If a suggested citation is absent from search metadata, up to four trusted primary pages are fetched and one replacement plan is grounded in the retrieved bodies. Duplicate redirects do not count as independent sources. The retrieved title, URL, SHA-256 and retrieval time are retained. This repair never marks facts as passed: the independent claim-and-diagram verifier must still pass. New explicit owner run requests can recover these pre-verification format/source-link failures; fact, rights and safety holds remain latched.
+
+Production completes one candidate at a time. Progress logs identify the planning/render/review stage without exposing credentials. After upload acceptance, the runner checks YouTube's privacy and processing status and records a separate public verification timestamp. A private/rejected result keeps its video ID and stops, without reuploading.
+
 Billing exhaustion (`credit_balance_exhausted` / `insufficient_quota`) defers production for six hours before a bounded automatic retry. Normal 429 rate limiting still uses backoff. The private acceptance report includes live YouTube authorization and renderer/font checks. After resolving a connection or billing issue, the dashboard can rerun the two isolated tests within the same daily AI budget; it never uploads them.
 
 Both A (knowledge with visual explanation) and B (footage with original commentary) use measured Japanese AI speech, short lower-screen captions, multiple visual scenes, and sourced explanatory graphics. Pexels is optional: absent stock produces original process/concept/comparison graphics, never a successful blank-background caption render. A production render that cannot meet the contract is held.

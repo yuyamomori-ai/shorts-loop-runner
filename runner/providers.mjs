@@ -21,7 +21,7 @@ export async function jsonFetch(url,options={}){
  if(!r.ok)throw apiError(r.status,j);return j;
 }
 const allowedHosts=['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','www.nasa.gov','science.nasa.gov','spaceplace.nasa.gov','www.nature.com','www.science.org','www.pnas.org','www.apa.org','www.ncbi.nlm.nih.gov','www.nih.gov','www.nist.gov','www.noaa.gov','www.jstage.jst.go.jp'];
-export function trustedSource(url){try{const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&(allowedHosts.includes(u.hostname)||u.hostname.endsWith('.edu')||u.hostname.endsWith('.ac.jp')||u.hostname.endsWith('.go.jp'));}catch{return false;}}
+export function trustedSource(url){try{const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&(allowedHosts.includes(u.hostname)||allowedHosts.includes('www.'+u.hostname)||u.hostname.endsWith('.edu')||u.hostname.endsWith('.ac.jp')||u.hostname.endsWith('.go.jp'));}catch{return false;}}
 function publicAddress(address){return !(/^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|224\.|255\.|::|fc|fd|fe80:)/i.test(address));}
 export async function sourceText(url){
  let current=url;
@@ -35,7 +35,8 @@ export async function sourceText(url){
   const raw=Buffer.concat(chunks).toString();
   const plain=raw.replace(/<(script|style|nav|header|footer)[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
   assert(plain.length>600&&!/Checking your browser|enable JavaScript.*continue|verify you are human/i.test(plain.slice(0,1500)),'情報源本文を確認できません。別の一次資料が必要です。');
-  return {url:current,text:plain.slice(0,18000),sha256:hash(raw),fetchedAt:now()};
+  const title=(raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'一次資料').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim().slice(0,300);
+  return {url:current,title,text:plain.slice(0,18000),sha256:hash(raw),fetchedAt:now()};
  }
  throw new Error('情報源のリダイレクトを確認できません。');
 }
