@@ -27,7 +27,7 @@ export function buildScenePlan(v,segments,assets=[],{repair=0}={}) {
    const fallbackLabels=visual.diagramSpec?.labels||[visual.overlay||Array.from(s.text).slice(0,14).join(''),...(visual.callout?[visual.callout]:[])];
    const effect=visual.effect==='clean'?(j%2?'pan':'zoom'):j%2===1&&visual.effect==='zoom'?'pan':visual.effect;
    const start=j===0?s.start:Math.round((s.start+j*length/count)*30)/30,end=j===count-1?s.end:Math.round((s.start+(j+1)*length/count)*30)/30;
-   scenes.push({index:scenes.length,segmentIndex:i,start,end,duration:end-start,visualType,assetId:card?null:assetId,effect,variant:(i+j+repair)%3,overlay:visual.overlay,callout:visual.callout,focus:visual.focus,sourceIds:s.sourceIds||[],diagramSpec:card?visual.diagramSpec:undefined,labels:fallbackLabels,sourceOffset:effect==='replay'?0:(i*2+j*1.2),transition:scenes.length?'cut':'opening',hook:i===0});
+   scenes.push({index:scenes.length,segmentIndex:i,start,end,duration:end-start,visualType,assetId:card?null:assetId,effect,variant:(i+j+repair)%3,overlay:visual.overlay,callout:visual.callout,focus:visual.focus,sourceIds:card?visual.diagramSpec.sourceIds:s.sourceIds||[],activeStep:card?(j+repair)%visual.diagramSpec.labels.length:null,diagramSpec:card?visual.diagramSpec:undefined,labels:fallbackLabels,sourceOffset:effect==='replay'?0:(i*2+j*1.2),transition:scenes.length?'cut':'opening',hook:i===0});
   }
  }
  // Short measured sentences can underfill the target count. Split the longest scene.
@@ -43,6 +43,6 @@ export function buildScenePlan(v,segments,assets=[],{repair=0}={}) {
 }
 export function sceneFeatures(scenes,duration,captionChars=0) {
  const count=f=>scenes.filter(f).length;
- const signature=s=>JSON.stringify([s.visualType,s.assetId,s.diagramSpec,s.labels,s.effect,s.variant]);
+ const signature=s=>JSON.stringify([s.visualType,s.assetId,s.diagramSpec,s.labels,s.effect,s.activeStep,s.variant]);
  return {sceneCount:scenes.length,averageSceneDuration:duration/scenes.length,maxSceneDuration:Math.max(...scenes.map(s=>s.duration)),realFootageRatio:scenes.filter(s=>s.assetId).reduce((n,s)=>n+s.duration,0)/duration,diagramCount:count(s=>!!s.diagramSpec),scienceCardCount:count(s=>s.visualType==='science_card'),explanationCount:count(s=>!!s.diagramSpec),zoomCount:count(s=>s.effect==='zoom'),replayCount:count(s=>s.effect==='replay'),highlightCount:count(s=>s.effect==='highlight'&&s.focus),calloutCount:count(s=>!!s.callout),hookVisualType:scenes[0]?.visualType,captionDensity:captionChars/duration,meaningfulChanges:scenes.slice(1).filter((s,i)=>signature(s)!==signature(scenes[i])).length,visualStyle:count(s=>!!s.assetId)?'footage_diagrams':'explainer_motion'};
 }

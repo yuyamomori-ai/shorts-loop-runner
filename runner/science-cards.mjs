@@ -22,7 +22,7 @@ export function scienceCardEvents(scene) {
   const ys=labels.length===2?[650,1010]:[625,855,1085];
   labels.forEach((label,i)=>{
    const reveal=a+Math.min(.25*i,scene.duration*.1),y=ys[i];
-   out+=event(reveal,b,'Label',vector(rect(150,y-65,750,130),i===0?'64432A':'513824','00','\\fad(80,0)'));
+   out+=event(reveal,b,'Label',vector(rect(150,y-65,750,130),i===(scene.activeStep??0)?'88603C':'513824','00','\\fad(80,0)'));
    out+=event(reveal,b,'Meta',`{\\pos(194,${y})\\1c&H${accent}&}${i+1}`);
    out+=event(reveal,b,'Label',`{\\pos(548,${y})\\fs50\\fad(80,0)}${wrapLabel(label,14)}`);
    if(i<labels.length-1){const top=y+82,bottom=ys[i+1]-83;out+=event(reveal+.1,b,'Label',vector(`m 531 ${top} l 549 ${top} 549 ${bottom-20} 570 ${bottom-20} 540 ${bottom+10} 510 ${bottom-20} 531 ${bottom-20}`,accent,'00','\\fad(100,0)'));}

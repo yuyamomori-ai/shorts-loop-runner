@@ -23,20 +23,21 @@ test('metadata edits invalidate approval and fact-check status',()=>{const s=ini
 test('fixed complete observation period handles Pacific date and latency',()=>{const w=observationWindow('2026-07-01T01:00:00Z',new Date('2026-07-15T12:00:00Z'));assert.equal(w.startDate,'2026-07-01');assert.equal(w.endDate,'2026-07-07');assert.equal(w.mature,true);assert.equal(observationWindow('2026-07-01T01:00:00Z',new Date('2026-07-08T12:00:00Z')).mature,false);});
 test('source allowlist rejects credentials, private addresses and hostname tricks',()=>{for(const url of ['http://nasa.gov','https://127.0.0.1','https://nasa.gov.evil.example/a','https://x@science.nasa.gov/a','https://science.nasa.gov:444/a'])assert.equal(trustedSource(url),false);assert.equal(trustedSource('https://science.nasa.gov/moon/tidal-locking/'),true);});
 test('Japanese near duplicates are detected',()=>{assert(similarity('人は記憶を思い出す練習で学びます','人は記憶を思い出す練習で学びます。')>.95);});
-test('billing exhaustion pauses production; transient rate limits remain retryable',async()=>{
+test('billing exhaustion waits six hours; transient rate limits use shorter backoff',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shorts-billing-')),store=new Store(dir),engine=new Engine(store);
  try{
   store.update(s=>{s.automation.retryAt=new Date(Date.now()+60000).toISOString();});
   engine.generate=async()=>{throw apiError(429,{error:{code:'credit_balance_exhausted'}});};
   await assert.rejects(engine.job('generate'),e=>e.code==='AI_BILLING');
-  assert.equal(store.read().settings.paused,true);assert.equal(store.read().automation.phase,'attention');assert.equal(store.read().automation.retryAt,undefined);
+  assert(Date.parse(store.read().automation.retryAt)>Date.now()+5.9*3600000);
+  assert.notEqual(store.read().automation.phase,'attention');
   engine.generate=async()=>{throw apiError(429,{error:{code:'rate_limit_exceeded'}});};
   await assert.rejects(engine.job('generate'));assert(store.read().automation.retryAt);
  }finally{store.close();rmSync(dir,{recursive:true,force:true});}
 });
 test('SQLite state survives process-store restart and leases exclude a second worker',()=>{const dir=mkdtempSync(join(tmpdir(),'shorts-test-'));let store=new Store(dir);store.update(s=>plan(s.live,1));assert.equal(store.acquire('job','one'),true);assert.equal(store.acquire('job','two'),false);store.close();store=new Store(dir);assert.equal(store.read().live.videos.length,1);store.close();rmSync(dir,{recursive:true,force:true});});
 test('lost final upload response resumes saved session without a second insert',async()=>{const dir=mkdtempSync(join(tmpdir(),'shorts-upload-'));const store=new Store(dir);const engine=new Engine(store);const media=join(dir,'test.mp4');writeFileSync(media,Buffer.from('fake-media-for-transport-test'));let id;
- store.update(s=>{plan(s.live,1);const v=s.live.videos[0];id=v.id;Object.assign(v,{originality:{originality:90,commentary:90,editing:90,educational:90,entertainment:90,copyrightRisk:0,reusedRisk:0,confidence:1},videoFile:media,videoHash:hash(Buffer.from('fake-media-for-transport-test')),status:'review',qa:{facts:'passed',rights:'passed',technical:'passed',visual:'passed'},mediaManifest:{credit:'test'}});readyVisual(v);applyAction(s,'approve',{id});});engine.youtube.token=async()=>'test-token';const old=globalThis.fetch;let inserts=0,puts=0;
+ store.update(s=>{plan(s.live,1);const v=s.live.videos[0];id=v.id;Object.assign(v,{originality:{originality:90,commentary:90,editing:90,educational:90,entertainment:90,copyrightRisk:0,reusedRisk:0,confidence:1},privacy:'private',videoFile:media,videoHash:hash(Buffer.from('fake-media-for-transport-test')),status:'review',qa:{facts:'passed',rights:'passed',technical:'passed',visual:'passed'},mediaManifest:{credit:'test'}});readyVisual(v);applyAction(s,'approve',{id});});engine.youtube.token=async()=>'test-token';const old=globalThis.fetch;let inserts=0,puts=0;
  globalThis.fetch=async(url,options)=>{if(options.method==='POST'){inserts++;return new Response('',{status:200,headers:{location:'https://www.googleapis.com/upload/test-session'}});}puts++;if(puts===1)throw Error('connection lost');return Response.json({id:'yt-test',status:{privacyStatus:'private'}});};
  try{await assert.rejects(engine.upload(id));assert(store.read().live.videos[0].uploadSession);await engine.upload(id);assert.equal(inserts,1);assert.equal(store.read().live.videos[0].youtubeId,'yt-test');await assert.rejects(engine.upload(id));}finally{globalThis.fetch=old;store.close();rmSync(dir,{recursive:true,force:true});}
 });
