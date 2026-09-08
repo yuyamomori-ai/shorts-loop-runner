@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 // https://developers.openai.com/api/docs/pricing
 const TEXT_MODELS=new Set(['gpt-5-mini','gpt-5-mini-2025-08-07']);
 const SPEECH_MODELS=new Set(['gpt-4o-mini-tts','gpt-4o-mini-tts-2025-12-15','gpt-4o-mini-tts-2025-03-20']);
-export const MAX_OUTPUT_TOKENS=7000,MAX_SEARCH_CALLS=2;
+export const MAX_OUTPUT_TOKENS=7000,MAX_SEARCH_CALLS=4;
 const round=x=>Math.max(0,Math.ceil((x-1e-12)*1e6)/1e6);
 export const monthOf=at=>new Date(at).toISOString().slice(0,7);
 export const nextBudgetMonth=at=>{const d=new Date(at);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1,0,0,10)).toISOString();};
@@ -21,7 +21,7 @@ export function budgetPolicy(env=process.env){
 }
 export function requestAllowance({kind,model,search=false,text=''}){
  if(kind==='response'&&TEXT_MODELS.has(model)){
-  // Reserve full model context and maximum output for each bounded search round.
+  // Reserve the full model context/output allowance for every bounded search round.
   const toolCalls=search?MAX_SEARCH_CALLS:0;
   return {kind,model,search,reservedUsd:round((400000*.25/1e6+MAX_OUTPUT_TOKENS*2/1e6)*(1+toolCalls)+toolCalls*.01)};
  }
@@ -46,28 +46,35 @@ function stateFor(s,at){
 function usedUsd(entry){return entry.legacyUsd+entry.requests.reduce((n,r)=>{if(!Number.isFinite(r.bookedUsd)||r.bookedUsd<0)throw error('BUDGET_STATE','費用台帳に不正な金額があります。');return n+r.bookedUsd;},0);}
 function accountingDiagnostics(s,entry){
  const ledgerByReservation=new Map((s.costLedger||[]).filter(x=>x.budgetReservationId).map(x=>[x.budgetReservationId,x]));
- let bookedOverruns=0,unexpectedToolCalls=0,unresolvedReservations=0;
+ let bookedOverruns=0,unexpectedToolCalls=0,unresolvedReservations=0,maxObservedSearchCalls=0;
  for(const r of entry.requests){
   if(r.bookedUsd>r.reservedUsd)bookedOverruns++;
   if(r.status==='reserved')unresolvedReservations++;
-  const ledger=ledgerByReservation.get(r.id);
-  if(r.kind==='response'&&Number.isSafeInteger(ledger?.searchCalls)&&ledger.searchCalls>(r.search?MAX_SEARCH_CALLS:0))unexpectedToolCalls++;
+  const ledger=ledgerByReservation.get(r.id),calls=Number.isSafeInteger(ledger?.searchCalls)?ledger.searchCalls:0;maxObservedSearchCalls=Math.max(maxObservedSearchCalls,calls);
+  if(r.kind==='response'&&calls>(r.search?MAX_SEARCH_CALLS:0))unexpectedToolCalls++;
  }
- return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,requestCount:entry.requests.length,reconciledUnexpectedToolCalls:entry.reconciledUnexpectedToolCalls||0};
+ return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,maxObservedSearchCalls,requestCount:entry.requests.length,reconciledUnexpectedToolCalls:entry.reconciledUnexpectedToolCalls||0};
+}
+function reconcileUpdatedSearchBound(s,entry,at){
+ if(!entry.overrun)return false;const d=accountingDiagnostics(s,entry);
+ // A previous tool-count latch can be cleared only when every request is settled,
+ // no booked amount exceeded its reservation, and all recorded searches fit the new bound.
+ if(d.bookedOverruns!==0||d.unresolvedReservations!==0||d.unexpectedToolCalls!==0)return false;
+ entry.overrun=false;entry.searchBoundReconciledAt=at;entry.searchBoundVersion=2;return true;
 }
 function reconcileAccountingHold(s,entry,policy,env,at){
  const requestId=env.SHORTSLOOP_BUDGET_RECONCILE_REQUEST||'';
  if(!entry.overrun||!requestId||!/^[a-zA-Z0-9-]{1,80}$/.test(requestId)||entry.reconcileRequestId===requestId)return false;
  const d=accountingDiagnostics(s,entry),used=usedUsd(entry);
- // Only a fully settled tool-count mismatch can be acknowledged. Any monetary overrun,
+ // Only a fully settled single tool-count mismatch can be acknowledged. Any monetary overrun,
  // unknown/reserved request, or large accumulated spend remains a hard stop.
  if(d.bookedOverruns!==0||d.unresolvedReservations!==0||d.unexpectedToolCalls!==1||used>=policy.aiUsd/2)return false;
- entry.reconcileRequestId=requestId;entry.reconciledAt=at;entry.reconciledUnexpectedToolCalls=d.unexpectedToolCalls;entry.overrun=false;return true;
+ entry.reconcileRequestId=requestId;entry.reconciledAt=at;entry.reconciledUnexpectedToolCalls=(entry.reconciledUnexpectedToolCalls||0)+1;entry.overrun=false;return true;
 }
 export function reserveSpend(s,spec,{at=new Date().toISOString(),env=process.env}={}){
  const policy=budgetPolicy(env),allowance=requestAllowance(spec),entry=stateFor(s,at);
  if(entry.legacyUnknown)throw error('BUDGET_HISTORY','今月の過去API費用に不明な記録があります。請求額を確認するまで新規生成を保留します。');
- reconcileAccountingHold(s,entry,policy,env,at);
+ reconcileUpdatedSearchBound(s,entry,at);reconcileAccountingHold(s,entry,policy,env,at);
  if(entry.overrun)throw error('BUDGET_ACCOUNTING','予算見積もりとの差を検出しました。費用を確認するまで生成を保留します。');
  if(round(usedUsd(entry)+allowance.reservedUsd)>policy.aiUsd)throw error('MONTHLY_AI_BUDGET','今月のAI制作枠に達しました。新規生成は翌月まで待機します。',at);
  const day=at.slice(0,10);s.usage??={};if(s.usage.day!==day)s.usage={day,aiCalls:0};
