@@ -15,7 +15,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "build:local": "vite build --config vite.local.config.ts",
     "start:local": "node runner/server.mjs",
-    "test:engine": "node --test tests/engine.test.mjs tests/growth.test.mjs tests/http.test.mjs tests/hosted.test.mjs tests/automation.test.mjs tests/storage.test.mjs tests/visual.test.mjs tests/benchmarks.test.mjs tests/validation-files.test.mjs",
+    "test:engine": "node --test tests/engine.test.mjs tests/growth.test.mjs tests/http.test.mjs tests/hosted.test.mjs tests/automation.test.mjs tests/storage.test.mjs tests/visual.test.mjs tests/benchmarks.test.mjs tests/validation-files.test.mjs tests/budget.test.mjs",
     "preview:video": "node runner/preview-example.mjs",
     "preview:visual": "node runner/visual-preview.mjs",
     "test:visual": "node --test tests/visual.test.mjs tests/benchmarks.test.mjs tests/render-visual.test.mjs"
