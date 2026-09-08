@@ -53,11 +53,21 @@ function accountingDiagnostics(s,entry){
   const ledger=ledgerByReservation.get(r.id);
   if(r.kind==='response'&&Number.isSafeInteger(ledger?.searchCalls)&&ledger.searchCalls>(r.search?MAX_SEARCH_CALLS:0))unexpectedToolCalls++;
  }
- return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,requestCount:entry.requests.length};
+ return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,requestCount:entry.requests.length,reconciledUnexpectedToolCalls:entry.reconciledUnexpectedToolCalls||0};
+}
+function reconcileAccountingHold(s,entry,policy,env,at){
+ const requestId=env.SHORTSLOOP_BUDGET_RECONCILE_REQUEST||'';
+ if(!entry.overrun||!requestId||!/^[a-zA-Z0-9-]{1,80}$/.test(requestId)||entry.reconcileRequestId===requestId)return false;
+ const d=accountingDiagnostics(s,entry),used=usedUsd(entry);
+ // Only a fully settled tool-count mismatch can be acknowledged. Any monetary overrun,
+ // unknown/reserved request, or large accumulated spend remains a hard stop.
+ if(d.bookedOverruns!==0||d.unresolvedReservations!==0||d.unexpectedToolCalls!==1||used>=policy.aiUsd/2)return false;
+ entry.reconcileRequestId=requestId;entry.reconciledAt=at;entry.reconciledUnexpectedToolCalls=d.unexpectedToolCalls;entry.overrun=false;return true;
 }
 export function reserveSpend(s,spec,{at=new Date().toISOString(),env=process.env}={}){
  const policy=budgetPolicy(env),allowance=requestAllowance(spec),entry=stateFor(s,at);
  if(entry.legacyUnknown)throw error('BUDGET_HISTORY','今月の過去API費用に不明な記録があります。請求額を確認するまで新規生成を保留します。');
+ reconcileAccountingHold(s,entry,policy,env,at);
  if(entry.overrun)throw error('BUDGET_ACCOUNTING','予算見積もりとの差を検出しました。費用を確認するまで生成を保留します。');
  if(round(usedUsd(entry)+allowance.reservedUsd)>policy.aiUsd)throw error('MONTHLY_AI_BUDGET','今月のAI制作枠に達しました。新規生成は翌月まで待機します。',at);
  const day=at.slice(0,10);s.usage??={};if(s.usage.day!==day)s.usage={day,aiCalls:0};
