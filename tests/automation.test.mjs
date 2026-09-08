@@ -60,3 +60,10 @@ test('an explicit funded public request clears the old billing wait without alte
  const s=armed();Object.assign(s.automation,{phase:'running',reason:'OpenAI APIの残高・利用上限の確認が必要です。',retryAt:'2099-01-01T00:00:00Z'});s.spendGuard={version:1,months:{fixture:{requests:[{bookedUsd:1}]}}};const ledger=JSON.stringify(s.spendGuard);
  assert(requestPublicAutopilot(s,'funded-request'));assert.equal(s.automation.retryAt,undefined);assert.equal(JSON.stringify(s.spendGuard),ledger);assert.equal(s.settings.privacy,'public');
 });
+test('a long or misplaced hook gets one bounded rewrite while sources and body remain for fact checking',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'loop-hook-')),store=new Store(dir),engine=new Engine(store);
+ try{const candidate={title:'覚える仕組み',sources:[{id:'s1',url:'https://www.nasa.gov/example'}],segments:[{role:'body',text:'長い冒頭の文章をそのまま読み上げ続けないための例です。',sourceIds:['s1'],overlay:'覚える仕組み'},{role:'body',text:'説明の文章。',sourceIds:['s1']}]};const body=JSON.stringify(candidate.segments[1]),sources=JSON.stringify(candidate.sources);let calls=0;
+ engine.ai.response=async()=>{calls++;return {value:{text:'どう覚える？'}};};await engine.shortenHook(candidate,'hook-test');assert.equal(candidate.segments[0].role,'hook');assert.equal(candidate.segments[0].text,'どう覚える？');assert.equal(JSON.stringify(candidate.segments[1]),body);assert.equal(JSON.stringify(candidate.sources),sources);await engine.shortenHook(candidate,'hook-test');assert.equal(calls,1);
+ const s=armed();Object.assign(s.automation,{phase:'attention',reason:'冒頭を1〜2秒で読める長さにできませんでした。'});requestPublicAutopilot(s,'hook-repair-request');assert.equal(s.automation.phase,'waiting');s.automation.phase='attention';s.automation.reason='事実確認が完了しなかったため、自動運転を停止しました。';requestPublicAutopilot(s,'another-request');assert.equal(s.automation.phase,'attention');
+ }finally{store.close();rmSync(dir,{recursive:true,force:true});}
+});

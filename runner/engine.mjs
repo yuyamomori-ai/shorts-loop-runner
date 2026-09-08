@@ -39,6 +39,13 @@ export class Engine {
  tryAutoStart(){let started=false;this.store.update(s=>{started=startWhenReady(s,this.capabilities());if(started)log(s.live,'start','YouTube接続後の自動運転を開始しました。');});if(started)console.log('ShortLOOP automation: running; mode=auto; privacy='+this.store.read().settings.privacy);return started;}
  stop(error){this.store.update(s=>{pauseAutomation(s,String(error.message||error));delete s.automation.retryAt;log(s.live,'stop',String(error.message||error).slice(0,800));});}
  progress(stage,id=this.activeVideoId,extra={}){const s=this.store.read(),v=s.live.videos.find(x=>x.id===id);console.log('ShortLOOP progress: '+JSON.stringify({at:now(),stage,videoId:v?.id||id||null,title:v?.title||null,status:v?.status||null,...extra}));}
+ async shortenHook(candidate,id){
+  const first=candidate.segments?.[0];if(first?.role==='hook'&&Array.from(first.text||'').length<=18)return;
+  this.progress('hook-repair',id,{characters:Array.from(first?.text||'').length,role:first?.role||null});
+  const r=await this.ai.response(`Shortsの冒頭だけを自然な日本語の短い疑問に直す。8〜12文字を目安、必ず15文字以内（句読点込み）。誇張・新しい事実・数値を追加しない。本文の答えにつながる問い。出力JSON {"text":"短い問い？"}。元の企画=${JSON.stringify({title:candidate.title,segments:candidate.segments,sources:candidate.sources})}`);
+  assert(typeof r.value.text==='string'&&r.value.text.length>0&&Array.from(r.value.text).length<=15,'冒頭を1〜2秒で読める長さにできませんでした。');
+  candidate.segments[0]={...first,text:r.value.text,role:'hook'};
+ }
  async job(action,payload={}){
   const owner=uid();assert(this.store.acquire('pipeline',owner,120),'別の制作・送信処理が実行中です。');this.running=true;const heartbeat=setInterval(()=>this.store.db.prepare('UPDATE leases SET expires=? WHERE name=? AND owner=?').run(Date.now()+120000,'pipeline',owner),30000);
   try{if(action==='validate'){const {runAcceptance}=await import('./acceptance.mjs');const report=await runAcceptance(this,payload);this.store.update(s=>{s.visualAcceptance=report;});return;}if(action==='generate')await this.generate(payload.count||1,payload.contentType||'auto');else if(action==='render'||action==='preview')await this.render(payload.id,action==='preview',false,!!payload.lightweight);else if(action==='upload')await this.upload(payload.id);else if(action==='sync')await this.sync();else if(action==='tick')await this.tick();else if(action==='schedulePublished')await this.schedulePublished(payload.id,payload.publishAt);else if(action==='channel')await this.channel();else if(action==='discoverAsset')await discoverAsset(this.store,payload.query||'animal nature');else throw Error('処理が見つかりません。');this.store.update(s=>{if(!s.automation.retryAt||Date.parse(s.automation.retryAt)<=Date.now()){delete s.automation.retryAt;s.automation.retryCount=0;if(s.automation.phase==='running')s.automation.reason=null;}});}
@@ -98,6 +105,7 @@ export class Engine {
    assert(typeof x.title==='string'&&x.title.length<=100&&x.title.length>0&&!/[<>]/.test(x.title),'生成タイトルが不正です。');
    assert(x.risk==='none','専門的判断またはポリシー上の確認が必要なテーマです。');
    assert(Array.isArray(x.segments)&&x.segments.length>=4&&x.segments.length<=10&&x.segments.every(y=>typeof y.text==='string'&&y.text.length>0&&y.text.length<=150&&Array.isArray(y.sourceIds)),'台本の形式が不正です。');
+   await this.shortenHook(x,base.id);
    assert(x.segments[0].role==='hook'&&Array.from(x.segments[0].text).length<=18,'冒頭を1〜2秒で読める長さにできませんでした。');
    const min=['心理学','記憶'].includes(base.genre)?2:1;assert(Array.isArray(x.sources)&&x.sources.length>=min&&x.sources.length<=5,'一次情報の数が不足しています。');
    const searched=new Set(result.sources.map(normalizeUrl));assert(x.sources.every(a=>a.id&&trustedSource(a.url)&&searched.has(normalizeUrl(a.url))),'検索結果で確認できない情報源が含まれています。');
