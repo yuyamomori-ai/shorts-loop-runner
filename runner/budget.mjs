@@ -44,6 +44,17 @@ function stateFor(s,at){
  return entry;
 }
 function usedUsd(entry){return entry.legacyUsd+entry.requests.reduce((n,r)=>{if(!Number.isFinite(r.bookedUsd)||r.bookedUsd<0)throw error('BUDGET_STATE','費用台帳に不正な金額があります。');return n+r.bookedUsd;},0);}
+function accountingDiagnostics(s,entry){
+ const ledgerByReservation=new Map((s.costLedger||[]).filter(x=>x.budgetReservationId).map(x=>[x.budgetReservationId,x]));
+ let bookedOverruns=0,unexpectedToolCalls=0,unresolvedReservations=0;
+ for(const r of entry.requests){
+  if(r.bookedUsd>r.reservedUsd)bookedOverruns++;
+  if(r.status==='reserved')unresolvedReservations++;
+  const ledger=ledgerByReservation.get(r.id);
+  if(r.kind==='response'&&Number.isSafeInteger(ledger?.searchCalls)&&ledger.searchCalls>(r.search?MAX_SEARCH_CALLS:0))unexpectedToolCalls++;
+ }
+ return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,requestCount:entry.requests.length};
+}
 export function reserveSpend(s,spec,{at=new Date().toISOString(),env=process.env}={}){
  const policy=budgetPolicy(env),allowance=requestAllowance(spec),entry=stateFor(s,at);
  if(entry.legacyUnknown)throw error('BUDGET_HISTORY','今月の過去API費用に不明な記録があります。請求額を確認するまで新規生成を保留します。');
@@ -70,6 +81,6 @@ export function settleSpend(s,reservation,{usage,searchCalls=0,rejected=false}={
  return {estimatedUsd:estimate,bookedUsd:r.bookedUsd};
 }
 export function spendingSummary(s,{at=new Date().toISOString(),env=process.env}={}){
- const policy=budgetPolicy(env),copy=structuredClone(s),entry=stateFor(copy,at),used=round(usedUsd(entry));
- return {...policy,month:monthOf(at),managedUsedJpy:Math.ceil(used*policy.yenPerUsd),remainingJpy:Math.max(0,Math.floor((policy.aiUsd-used)*policy.yenPerUsd)),blocked:entry.legacyUnknown||!!entry.overrun||used>=policy.aiUsd,unknownHistory:entry.legacyUnknown,notInvoice:true};
+ const policy=budgetPolicy(env),copy=structuredClone(s),entry=stateFor(copy,at),used=round(usedUsd(entry)),diagnostics=accountingDiagnostics(copy,entry);
+ return {...policy,month:monthOf(at),managedUsedJpy:Math.ceil(used*policy.yenPerUsd),remainingJpy:Math.max(0,Math.floor((policy.aiUsd-used)*policy.yenPerUsd)),blocked:entry.legacyUnknown||!!entry.overrun||used>=policy.aiUsd,unknownHistory:entry.legacyUnknown,notInvoice:true,...diagnostics};
 }
