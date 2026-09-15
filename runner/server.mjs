@@ -1,4 +1,5 @@
 import {validationFile} from './validation-files.mjs';
+import {reviewTarget,reviewFile,reviewPlan} from './review-files.mjs';
 import {configureConnections} from './vault.mjs';
 import {pauseAutomation} from '../lib/automation.mjs';
 import {OAuthFlow} from './oauth-flow.mjs';
@@ -30,10 +31,17 @@ const server=createServer(async(req,res)=>{
  // Only a data-free GET health check is public; OAuth returns through the private Site.
  const health=req.method==='GET'&&url.pathname==='/healthz';
  const validationAuth=req.method==='GET'&&url.pathname.startsWith('/api/validation/')&&process.env.SHORTSLOOP_VALIDATION_TOKEN&&Date.parse(process.env.SHORTSLOOP_VALIDATION_ACCESS_EXPIRES)>Date.now()&&secureEqual(req.headers.authorization,`Bearer ${process.env.SHORTSLOOP_VALIDATION_TOKEN}`);
- if(!health&&!auth&&!validationAuth&&(remote||url.pathname.startsWith('/api/')&&!local)){res.writeHead(401,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify({error:'認証が必要です。'}));return;}
+ const review=reviewTarget(url.pathname,process.env.SHORTSLOOP_REVIEW_VIDEO_ID);
+ const reviewAuth=req.method==='GET'&&review&&process.env.SHORTSLOOP_REVIEW_TOKEN?.length>=32&&Date.parse(process.env.SHORTSLOOP_REVIEW_ACCESS_EXPIRES)>Date.now()&&secureEqual(req.headers.authorization,`Bearer ${process.env.SHORTSLOOP_REVIEW_TOKEN}`);
+ if(!health&&!auth&&!validationAuth&&!reviewAuth&&(remote||url.pathname.startsWith('/api/')&&!local)){res.writeHead(401,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify({error:'認証が必要です。'}));return;}
  if(req.method!=='GET'&&!auth){const origin=req.headers.origin;const expected=`http://${req.headers.host}`;if(origin!==expected){res.writeHead(403);res.end('Origin rejected');return;}}
  function json(x,status=200){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(x));}
  try{
+  if(review&&req.method==='GET'){
+   if(review.name==='plan.json'){const v=reviewPlan(store.read().live.videos.find(x=>x.id===review.id));json(v||{error:'動画がありません。'},v?200:404);return;}
+   const file=reviewFile(store.directory,review);if(!file){json({error:'確認ファイルはまだありません。'},404);return;}
+   res.writeHead(200,{'Content-Type':file.endsWith('.mp4')?'video/mp4':file.endsWith('.jpg')?'image/jpeg':'application/json','Content-Length':statSync(file).size,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(file).pipe(res);return;
+  }
   if(url.pathname==='/api/oauth/start'&&req.method==='GET'){const base=process.env.PUBLIC_BASE_URL||(auth?req.headers['x-shorts-site-origin']:null)||`http://${req.headers.host}`;res.writeHead(302,{Location:oauth.start(base,store.read().automation?.targetEmail),'Cache-Control':'no-store'});res.end();return;}
   if(url.pathname==='/api/oauth/callback'&&req.method==='GET'){const identity=await oauth.complete(url.searchParams);store.update(s=>{s.automation.verifiedEmail=identity.email;});await engine.channel();engine.tryAutoStart();queueMicrotask(pump);res.writeHead(302,{Location:'/', 'Cache-Control':'no-store'});res.end();return;}
   if(url.pathname.startsWith('/api/assets/')&&req.method==='POST'){const chunks=[];let size=0;for await(const c of req){size+=c.length;assert(size<100*1024*1024,'素材は100MB未満にしてください。');chunks.push(c);}await attachAsset(store,url.pathname.split('/').at(-1),Buffer.concat(chunks));json(engine.publicState());return;}
