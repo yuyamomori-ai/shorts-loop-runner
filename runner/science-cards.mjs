@@ -13,14 +13,14 @@ const vector=(path,color,alpha='00',motion='')=>`{\\an7\\pos(0,0)\\p1\\bord0\\sh
 
 // Functional icons represent the checked label, never an anatomical or statistical claim.
 function symbol(label,x,y,r,color) {
- let path='';
- if(/映像|動画|見る|光|画面/.test(label))path=rect(x-r,y-r*.65,r*2,r*1.3)+` m ${x-r*.22} ${y-r*.38} l ${x+r*.48} ${y} ${x-r*.22} ${y+r*.38}`;
- else if(/警告|注意|誤|混|錯/.test(label))path=`m ${x} ${y-r} l ${x+r} ${y+r*.75} ${x-r} ${y+r*.75} m ${x-5} ${y-r*.35} l ${x+5} ${y-r*.35} ${x+5} ${y+r*.2} ${x-5} ${y+r*.2} `+circle(x,y+r*.48,6);
- else if(/検査|テスト|確認|想起|思い出/.test(label))path=circle(x-r*.15,y-r*.15,r*.63)+rect(x+r*.27,y+r*.34,r*.55,r*.18);
- else if(/人|参加|年齢|行動/.test(label))path=circle(x,y-r*.5,r*.37)+` m ${x-r*.75} ${y+r} b ${x-r*.7} ${y-r*.05} ${x+r*.7} ${y-r*.05} ${x+r*.75} ${y+r}`;
- else if(/液体|水|泡|気体|分子/.test(label))path=circle(x-r*.47,y+r*.27,r*.36)+circle(x+r*.44,y+r*.21,r*.3)+circle(x,y-r*.48,r*.4);
- else path=rect(x-r*.64,y-r,r*1.28,r*2)+rect(x-r*.38,y-r*.45,r*.76,7)+rect(x-r*.38,y-r*.05,r*.76,7)+rect(x-r*.38,y+r*.35,r*.5,7);
- return vector(path,color,'00','\\fad(100,0)\\1a&HFF&\\3c&H'+color+'&').replace('\\bord0','\\bord5');
+ let paths;
+ if(/映像|動画|見る|光|画面/.test(label))paths=[rect(x-r,y-r*.65,r*2,r*1.3),`m ${x-r*.22} ${y-r*.38} l ${x+r*.48} ${y} ${x-r*.22} ${y+r*.38}`];
+ else if(/警告|注意|誤|混|錯/.test(label))paths=[`m ${x} ${y-r} l ${x+r} ${y+r*.75} ${x-r} ${y+r*.75}`,rect(x-5,y-r*.35,10,r*.55),circle(x,y+r*.48,6)];
+ else if(/検査|テスト|確認|想起|思い出/.test(label))paths=[circle(x-r*.15,y-r*.15,r*.63),rect(x+r*.27,y+r*.34,r*.55,r*.18)];
+ else if(/人|参加|年齢|行動/.test(label))paths=[circle(x,y-r*.5,r*.37),`m ${x-r*.75} ${y+r} b ${x-r*.7} ${y-r*.05} ${x+r*.7} ${y-r*.05} ${x+r*.75} ${y+r}`];
+ else if(/液体|水|泡|気体|分子/.test(label))paths=[circle(x-r*.47,y+r*.27,r*.36),circle(x+r*.44,y+r*.21,r*.3),circle(x,y-r*.48,r*.4)];
+ else paths=[rect(x-r*.64,y-r,r*1.28,r*2),rect(x-r*.38,y-r*.45,r*.76,7),rect(x-r*.38,y-r*.05,r*.76,7),rect(x-r*.38,y+r*.35,r*.5,7)];
+ return paths.map(path=>vector(path,color,'00','\\fad(100,0)\\1a&HFF&\\3c&H'+color+'&').replace('\\bord0','\\bord5'));
 }
 const palettes=[{panel:'F7EFE7',ink:'3E2815',accent:'4045ED',soft:'DFD0C1'},{panel:'48361E',ink:'FFFFFF',accent:'60D8FF',soft:'6A5135'},{panel:'E0F4F9',ink:'342A19',accent:'9A5835',soft:'B9DEEA'}];
 export function scienceCardEvents(scene) {
@@ -31,7 +31,7 @@ export function scienceCardEvents(scene) {
  out+=event(a,b,'Meta',`{\\an7\\pos(108,452)\\fs27\\bord0\\1c&H${p.ink}&}${type==='process'?'順序を見てみる':type==='comparison'?'違いを比べる':'ポイントを図解'}`);
  const text=(str,x,y,size=48,color=p.ink,from=a,width=720)=>event(from,b,'Label',`{\\pos(${x},${y})\\fs${size}\\bord0\\1c&H${color}&\\fad(90,0)}${wrapLabel(str,Math.max(3,Math.floor(width/size)))}`);
  const shape=(path,color=p.accent,from=a)=>event(from,b,'Label',vector(path,color),0);
- const icon=(str,x,y,r,from=a)=>event(from,b,'Label',symbol(str,x,y,r,p.accent),1);
+ const icon=(str,x,y,r,from=a)=>symbol(str,x,y,r,p.accent).map(drawing=>event(from,b,'Label',drawing,1)).join('');
  const arrow=(x,y,vertical=false)=>shape(vertical?`m ${x-7} ${y-23} l ${x+7} ${y-23} ${x+7} ${y+3} ${x+21} ${y+3} ${x} ${y+28} ${x-21} ${y+3} ${x-7} ${y+3}`:`m ${x-25} ${y-7} l ${x+4} ${y-7} ${x+4} ${y-22} ${x+30} ${y} ${x+4} ${y+22} ${x+4} ${y+7} ${x-25} ${y+7}`);
  if(scene.hook&&/記憶|誤情報|心理|覚|思い出|警告/.test(scene.overlay+labels.join(''))) {
   // A generic person and phone are illustrative icons, not a depiction of study participants.
