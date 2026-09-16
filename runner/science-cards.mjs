@@ -23,12 +23,14 @@ function symbol(label,x,y,r,color) {
  return paths.map(path=>vector(path,color,'00','\\fad(100,0)\\1a&HFF&\\3c&H'+color+'&').replace('\\bord0','\\bord5'));
 }
 const palettes=[{panel:'F7EFE7',ink:'3E2815',accent:'4045ED',soft:'DFD0C1'},{panel:'48361E',ink:'FFFFFF',accent:'60D8FF',soft:'6A5135'},{panel:'E0F4F9',ink:'342A19',accent:'9A5835',soft:'B9DEEA'}];
+export const sceneBackground=variant=>['0xe7eff7','0x182b3b','0xf9f4e0'][(variant||0)%3];
 export function scienceCardEvents(scene) {
  const {start:a,end:b,diagramSpec:d}=scene,p=palettes[(scene.variant||0)%3],labels=d?.labels||scene.labels||[],n=labels.length,type=d?.type||'concept';
  const active=Math.max(0,(scene.activeStep??scene.segmentIndex??0)%Math.max(1,n));
  const layout=scene.layout||['overview','focus','timeline'][(scene.variant||0)%3];
- let out=event(a,b,'Label',vector(rect(72,420,908,812),p.panel),0);
- out+=event(a,b,'Meta',`{\\an7\\pos(108,452)\\fs27\\bord0\\1c&H${p.ink}&}${type==='process'?'順序を見てみる':type==='comparison'?'違いを比べる':'ポイントを図解'}`);
+ // Alternate full-canvas compositions; a repeated central box looked like slides.
+ let out=layout==='focus'?'':event(a,b,'Label',vector(rect(72,420,908,812),p.panel),0);
+ out+=event(a,b,'Meta',`{\\an7\\pos(108,452)\\fs27\\bord0\\1c&H${p.ink}&}${scene.hook?'イメージ':type==='process'?'順序を見てみる':type==='comparison'?'違いを比べる':'ポイントを図解'}`);
  const text=(str,x,y,size=48,color=p.ink,from=a,width=720)=>event(from,b,'Label',`{\\pos(${x},${y})\\fs${size}\\bord0\\1c&H${color}&\\fad(90,0)}${wrapLabel(str,Math.max(3,Math.floor(width/size)))}`);
  const shape=(path,color=p.accent,from=a)=>event(from,b,'Label',vector(path,color),0);
  const icon=(str,x,y,r,from=a)=>symbol(str,x,y,r,p.accent).map(drawing=>event(from,b,'Label',drawing,1)).join('');
@@ -94,7 +96,7 @@ export function scienceCardEvents(scene) {
    out+=text(label,x,y+126,n===1?64:45,p.ink,t,n===1?650:320);
   });
  }
- if(d?.caption)out+=text(d.caption,530,1194,27);
+ if(d?.caption&&!scene.hook)out+=text(d.caption,530,1194,27);
  // A visible progressive reveal and small pan keep motion inside the safe card area.
  if(scene.effect==='pan')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>`\\move(${Number(x)-12},${y},${Number(x)+12},${y})`);
  if(scene.effect==='zoom')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>{

@@ -8,7 +8,7 @@ import {hash} from './providers.mjs';
 import {assetReady} from '../lib/rights.mjs';
 import {requiresExplanation,minimumScenes,VISUAL_VERSION} from '../lib/visual.mjs';
 import {buildScenePlan,sceneFeatures} from './visual-plan.mjs';
-import {assHeader,event,assSafe,captionEvents,sceneOverlayEvents} from './science-cards.mjs';
+import {assHeader,event,assSafe,captionEvents,sceneOverlayEvents,sceneBackground} from './science-cards.mjs';
 const renderThreads=Math.max(1,Math.min(4,Number(process.env.FFMPEG_THREADS)||2));
 export function run(command,args,timeout=600000){if(command==='ffmpeg')args=['-nostats','-threads',String(renderThreads),'-filter_threads',String(renderThreads),'-filter_complex_threads',String(renderThreads),...args];return new Promise((res,rej)=>{const child=spawn(command,args,{windowsHide:true});let out='',err='',diagnostics='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>{const chunk=x.toString();if(/black_start:|freeze_start:|Invalid data|Error while decoding/.test(chunk))diagnostics=(diagnostics+chunk).slice(-12000);err=(err+chunk).slice(-16000);});const t=setTimeout(()=>{child.kill();rej(new Error('処理が制限時間を超えました。'));},timeout);child.on('error',e=>{clearTimeout(t);rej(e);});child.on('close',code=>{clearTimeout(t);code===0?res({out,err:diagnostics+'\n'+err}):rej(new Error(`${command}: ${err.slice(-1200)}`));});});}
 export async function probe(file){return JSON.parse((await run('ffprobe',['-v','error','-show_format','-show_streams','-of','json',file],30000)).out);}
@@ -74,7 +74,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  assert(cursor>=20&&cursor<=60,`実際の音声尺が${cursor.toFixed(1)}秒です。20〜60秒に収まる台本に修正してください。`);
  const allAssets=[...new Map([...(asset?[asset]:[]),...assets].map(a=>[a.id,a])).values()];
  for(const a of allAssets)assert(assetReady(a)&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'使用素材の権利・ファイル整合性を確認できません。');
- const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues}),caption=captionEvents(segments,{size:repair?48:v.captionStyle==='bold'?55:52});
+ const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues}),caption=captionEvents(segments,{size:repair?52:v.captionStyle==='bold'?55:52});
  const features=sceneFeatures(scenes,cursor,caption.totalChars);
  assert(features.meaningfulChanges>=minimumScenes(cursor)-1,'視覚変化が不足しています。');
  let ass=assHeader(font,caption.size)+caption.events;
@@ -100,10 +100,11 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
     if(f)filter+=`,drawbox=x=${Math.round(f.x*1080)}:y=${Math.round(f.y*1920)}:w=${Math.round(f.w*1080)}:h=${Math.round(f.h*1920)}:color=0xaae67a:t=5`;
    }
   }else{
-   input.push('-f','lavfi','-i',`color=c=${['0x101e30','0x182b3b','0x273748'][scene.variant]}:s=1080x1920:r=30:d=${scene.duration}`);
+   input.push('-f','lavfi','-i',`color=c=${sceneBackground(scene.variant)}:s=1080x1920:r=30:d=${scene.duration}`);
    filter=`drawgrid=w=120:h=120:t=1:c=0x58819b@0.08,setsar=1`;
   }
   if(a)filter+=`,drawbox=x=110:y=1350:w=844:h=160:color=black@0.20:t=fill`;
+  else if(scene.variant!==1)filter+=`,drawbox=x=110:y=1340:w=844:h=175:color=0x102030@0.82:t=fill`;
   filter+=',format=yuv420p';
   await run('ffmpeg',[...input,'-an','-vf',filter,'-r','30','-t',String(scene.duration),'-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p',file]);sceneFiles.push(file);
  }
