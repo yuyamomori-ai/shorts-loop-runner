@@ -38,7 +38,8 @@ export async function referencesForNextVideo(store,youtube,genre,{enabled=proces
   let ids=[];
   if((!last||Date.now()-Date.parse(last)>DAY)&&used<cap) {
    store.update(s=>{s.benchmarkLibrary??={items:[],searches:{}};s.benchmarkLibrary.daily={day:today,searches:used+1};s.benchmarkLibrary.searches[key]=now();});
-   const search=await youtube.request('search',{part:'snippet',type:'video',q:key==='science'?'science experiment #shorts':'雑学 心理 #shorts',videoDuration:'short',order:'viewCount',maxResults:'20',safeSearch:'strict',relevanceLanguage:'ja'},token);
+   const topics=key==='science'?['科学 実験 #shorts','身近な科学 なぜ #shorts','理科 仕組み #shorts']:['雑学 豆知識 #shorts','記憶 心理 解説 #shorts','歴史 知識 #shorts'];
+   const search=await youtube.request('search',{part:'snippet',type:'video',q:topics[Math.floor(Date.now()/DAY)%topics.length],videoDuration:'short',order:'viewCount',maxResults:'20',safeSearch:'strict',regionCode:'JP',relevanceLanguage:'ja'},token);
    ids=(search.items||[]).map(x=>x.id?.videoId).filter(x=>/^[\w-]{11}$/.test(x||''));
   }
   // Refresh selected references before EACH new video's planning, even on a cache hit.
