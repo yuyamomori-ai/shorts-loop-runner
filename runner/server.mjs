@@ -1,6 +1,6 @@
 import {validationFile} from './validation-files.mjs';
 import {reviewTarget,reviewFile,reviewPlan} from './review-files.mjs';
-import {startPreparation} from './preparation.mjs';
+import {startPreparation,resumePreparedVisualAfterStockConnection} from './preparation.mjs';
 import {configureConnections} from './vault.mjs';
 import {pauseAutomation} from '../lib/automation.mjs';
 import {OAuthFlow} from './oauth-flow.mjs';
@@ -57,7 +57,7 @@ const server=createServer(async(req,res)=>{
   }
   if(url.pathname==='/api/action'&&req.method==='POST'){
    const chunks=[];let n=0;for await(const c of req){n+=c.length;assert(n<2000000,'入力サイズが大きすぎます。');chunks.push(c);}const b=JSON.parse(Buffer.concat(chunks));
-   if(b.action==='configureConnections'){assert(b.dataset==='live','実チャンネルで操作してください。');assert(!engine.running,'制作中です。完了後に接続設定を変更してください。');configureConnections(store.directory,b.payload||{});engine.ai=new (engine.ai.constructor)(store);queueMicrotask(pump);json({...engine.publicState(),message:'接続情報を安全に保存しました。'});return;}
+   if(b.action==='configureConnections'){assert(b.dataset==='live','実チャンネルで操作してください。');assert(!engine.running,'制作中です。完了後に接続設定を変更してください。');const hadStock=engine.capabilities().pexels;configureConnections(store.directory,b.payload||{});if(!hadStock&&b.payload?.pexelsKey)resumePreparedVisualAfterStockConnection(store);engine.ai=new (engine.ai.constructor)(store);queueMicrotask(pump);json({...engine.publicState(),message:'接続情報を安全に保存しました。'});return;}
    if(['generate','render','preview','upload','sync','tick','channel','schedulePublished','discoverAsset','validate'].includes(b.action)){
     assert(b.dataset==='live','検証データに対して外部APIを実行できません。');assert(!engine.running,'別の制作処理が進行中です。');
     // Queue before responding; errors and completion are persisted for polling clients.

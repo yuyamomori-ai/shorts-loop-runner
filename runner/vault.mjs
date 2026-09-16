@@ -26,9 +26,11 @@ export function googleClient(dir){
   return null;
 }
 export function aiKey(dir){return process.env.OPENAI_API_KEY||readSecret(dir,'connections.json')?.openaiKey||'';}
+export function pexelsKey(dir){return process.env.PEXELS_API_KEY||readSecret(dir,'connections.json')?.pexelsKey||'';}
 export function configureConnections(dir,input){
   const saved=readSecret(dir,'connections.json')||{};
   if(input.openaiKey){assert(typeof input.openaiKey==='string'&&input.openaiKey.length>=20&&input.openaiKey.length<=1000&&!/\s/.test(input.openaiKey),'AIキーの形式を確認してください。');saved.openaiKey=input.openaiKey;}
+  if(input.pexelsKey){assert(typeof input.pexelsKey==='string'&&input.pexelsKey.length>=20&&input.pexelsKey.length<=300&&!/\s/.test(input.pexelsKey),'Pexelsキーの形式を確認してください。');saved.pexelsKey=input.pexelsKey;}
   if(input.google){const c=input.google.web||input.google.installed||input.google;assert(typeof c.client_id==='string'&&c.client_id.endsWith('.apps.googleusercontent.com')&&typeof c.client_secret==='string'&&c.client_secret.length>5,'Googleから取得した接続設定ファイルを選んでください。');saved.google={client_id:c.client_id,client_secret:c.client_secret};}
   writeSecret(dir,'connections.json',saved);
 }

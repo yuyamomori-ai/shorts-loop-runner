@@ -1,6 +1,12 @@
 import {now,assert} from '../lib/core.mjs';
 import {hash} from './providers.mjs';
 
+export function resumePreparedVisualAfterStockConnection(store,env=process.env){
+ const s=store.read(),p=s.productionPreparation,v=s.live.videos.find(x=>x.id===env.SHORTSLOOP_PREPARE_VIDEO_ID);
+ if(s.automation?.userPaused||!p||p.requestId!==env.SHORTSLOOP_PREPARE_REQUEST||p.status!=='failed'||!v||v.status!=='blocked'||v.risk||v.youtubeId||v.uploadIntent||v.uploadSession||v.qa?.facts!=='passed'||v.qa?.assetRights==='failed'||!String(v.error||'').startsWith('映像品質を確認できない'))return false;
+ store.update(state=>{state.productionPreparation.status='waiting';});return true;
+}
+
 export function revisePreparedNarration(store,id,request,revision){
  if(!revision)return;
  const v=store.read().live.videos.find(x=>x.id===id);

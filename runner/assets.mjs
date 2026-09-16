@@ -4,6 +4,7 @@ import {assert,uid,now,log} from '../lib/core.mjs';
 import {assetReady} from '../lib/rights.mjs';
 import {hash,jsonFetch} from './providers.mjs';
 import {probe,run} from './render.mjs';
+import {pexelsKey} from './vault.mjs';
 export async function attachAsset(store,id,bytes){
  const a=store.read().live.assets.find(x=>x.id===id);assert(a,'素材が見つかりません。');assert(!a.file,'既存の素材を上書きできません。新しい素材として登録してください。');assert(bytes.length<100*1024*1024,'素材サイズは100MB未満にしてください。');
  const dir=resolve(store.directory,'assets',id);mkdirSync(dir,{recursive:true});const file=resolve(dir,'source.mp4');writeFileSync(file,bytes);let info;
@@ -12,11 +13,11 @@ export async function attachAsset(store,id,bytes){
  store.update(s=>{const a=s.live.assets.find(a=>a.id===id);Object.assign(a,{file,sha256:hash(bytes),duration:Number(info.format.duration),width:video.width,height:video.height});log(s.live,'asset','素材ファイルと検査結果を保存しました。');});return store.read().live.assets.find(x=>x.id===id);
 }
 export async function discoverAsset(store,query,{excludeIds=[]}={}){
- assert(process.env.PEXELS_API_KEY,'TYPE Bには権利確認済みの素材、またはPEXELS_API_KEYが必要です。');
+ const credential=pexelsKey(store.directory);assert(credential,'TYPE Bには権利確認済みの素材、またはPEXELS_API_KEYが必要です。');
  query=String(query).replace(/[\u0000-\u001f]/g,'').trim().slice(0,100);assert(query,'映像検索のクエリが必要です。');
  const state=store.read(),key=query.toLowerCase(),cached=state.assetSearchCache?.[key];
  let response=cached&&Date.now()-Date.parse(cached.at)<86400000?cached.response:null;
- if(!response){response=await jsonFetch('https://api.pexels.com/videos/search?'+new URLSearchParams({query,per_page:'12',orientation:'portrait',size:'medium'}),{headers:{Authorization:process.env.PEXELS_API_KEY}});store.update(s=>{s.assetSearchCache??={};s.assetSearchCache[key]={at:now(),response};const keys=Object.keys(s.assetSearchCache);for(const old of keys.slice(0,Math.max(0,keys.length-60)))delete s.assetSearchCache[old];});}
+ if(!response){response=await jsonFetch('https://api.pexels.com/videos/search?'+new URLSearchParams({query,per_page:'12',orientation:'portrait',size:'medium'}),{headers:{Authorization:credential}});store.update(s=>{s.assetSearchCache??={};s.assetSearchCache[key]={at:now(),response};const keys=Object.keys(s.assetSearchCache);for(const old of keys.slice(0,Math.max(0,keys.length-60)))delete s.assetSearchCache[old];});}
  const suitable=v=>v.duration>5&&v.duration<=120;
  const reusable=(response.videos||[]).filter(suitable).map(v=>state.live.assets.find(a=>a.providerId===v.id)).find(a=>assetReady(a)&&existsSync(a.file)&&a.inspection?.usable&&a.inspection?.confidence>=.85&&!excludeIds.includes(a.id));
  if(reusable)return reusable;

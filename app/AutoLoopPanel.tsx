@@ -4,13 +4,13 @@ import {CheckCircle2, Circle, Link2, Pause, RefreshCw, ShieldCheck} from 'lucide
 import {automationReadiness} from '../lib/automation.mjs';
 
 export default function AutoLoopPanel({state,caps,busy,act,compact=false,onSetup}:any){
-  const [key,setKey]=useState(''),[google,setGoogle]=useState<any>(null),[fileName,setFileName]=useState(''),[inputError,setInputError]=useState('');
+  const [key,setKey]=useState(''),[stockKey,setStockKey]=useState(''),[google,setGoogle]=useState<any>(null),[fileName,setFileName]=useState(''),[inputError,setInputError]=useState('');
   const a=state.automation||{}, readiness=automationReadiness(state,caps);
   const running=!state.settings.paused&&caps.scheduler&&!caps.publishHold;
   const attention=a.phase==='attention',userPaused=a.userPaused;
   const native=caps.musicMode==='shorts-library';
   const label=caps.publishHold?(native?'YouTubeでの音源追加待ち':'公開前の検証中'):running?'自動運転中':attention?'確認が必要です':userPaused?'一時停止中':'まだ投稿は始まっていません';
-  const save=async()=>{const ok=await act('configureConnections',{...(key?{openaiKey:key}:{}),...(google?{google}:{})},'live');if(ok){setKey('');setGoogle(null);setFileName('');}};
+  const save=async()=>{const ok=await act('configureConnections',{...(key?{openaiKey:key}:{}),...(stockKey?{pexelsKey:stockKey}:{}),...(google?{google}:{})},'live');if(ok){setKey('');setStockKey('');setGoogle(null);setFileName('');}};
   return <section className="auto-loop panel" aria-label="接続後の自動運転">
     <div className="between"><div><span className="auto-kicker">接続後の自動運転</span><h2>{native?'動画を作って、Shortsの音源を選ぶ。':running?'次の投稿を、自動で進めています。':'YouTubeを接続して、自動運転へ。'}</h2></div><span className={'loop-state '+(running?'running':'')}>{label}</span></div>
     <p className="loop-lead">{native?'AI音声と図解の動画を制作し、内容に合う曲を候補として記録します。YouTubeアプリでの音源追加が必要なため、現在は自動公開を保留しています。':state.settings.mode==='review'?'手動承認モードです。動画の制作後、あなたの承認を待ちます。':'準備がそろいYouTubeを許可すると、企画・制作・投稿・結果の分析を繰り返します。開始ボタンや毎回の承認は不要です。'}</p>
@@ -28,9 +28,10 @@ export default function AutoLoopPanel({state,caps,busy,act,compact=false,onSetup
     </div>
     {!compact&&<details className="connection-setup"><summary>初回だけ必要な接続設定</summary><p>Googleのパスワードは入力しません。設定を保存した後、Googleの画面でアクセスを許可します。</p>
       <label>AIの利用キー<input type="password" autoComplete="new-password" value={key} disabled={!caps.scheduler} onChange={e=>setKey(e.target.value)} placeholder={caps.ai?'設定済み・変更するときだけ入力':'AIサービスで発行したキー'}/></label>
+      <label>Pexelsの映像検索キー<input type="password" autoComplete="new-password" value={stockKey} disabled={!caps.scheduler} onChange={e=>setStockKey(e.target.value)} placeholder={caps.pexels?'設定済み・変更するときだけ入力':'Pexelsで発行したAPIキー'}/></label><p><a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">Pexelsでキーを取得</a> · 音楽用ではなく、説明用の映像素材を探す接続です。</p>
       <label>Googleから取得した接続設定ファイル<input type="file" accept="application/json,.json" disabled={!caps.scheduler} onChange={async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>100000)throw Error();setGoogle(JSON.parse(await f.text()));setFileName(f.name);setInputError('');}catch{setInputError('Googleから取得したJSONファイルを選んでください。');}}}/></label>
       {fileName&&<p>{fileName}を保存します。</p>}{inputError&&<p role="alert">{inputError}</p>}
-      <button className="secondary" disabled={!!busy||!caps.scheduler||!key&&!google} onClick={save}>接続設定を安全に保存</button>
+      <button className="secondary" disabled={!!busy||!caps.scheduler||!key&&!stockKey&&!google} onClick={save}>接続設定を安全に保存</button>
       <p>接続先の準備が済むと「YouTubeと接続」を押せます。公開投稿にはYouTube API側の利用準備も必要です。</p>
     </details>}
     {!readiness.learningReady&&<p className="loop-footnote">実データからの学習は、YouTubeの分析用追加条件を確認後に有効になります。</p>}
