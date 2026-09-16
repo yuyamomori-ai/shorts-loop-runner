@@ -8,12 +8,13 @@ export default function AutoLoopPanel({state,caps,busy,act,compact=false,onSetup
   const a=state.automation||{}, readiness=automationReadiness(state,caps);
   const running=!state.settings.paused&&caps.scheduler&&!caps.publishHold;
   const attention=a.phase==='attention',userPaused=a.userPaused;
-  const label=caps.publishHold?'公開前の検証中':running?'自動運転中':attention?'確認が必要です':userPaused?'一時停止中':'まだ投稿は始まっていません';
+  const native=caps.musicMode==='shorts-library';
+  const label=caps.publishHold?(native?'YouTubeでの音源追加待ち':'公開前の検証中'):running?'自動運転中':attention?'確認が必要です':userPaused?'一時停止中':'まだ投稿は始まっていません';
   const save=async()=>{const ok=await act('configureConnections',{...(key?{openaiKey:key}:{}),...(google?{google}:{})},'live');if(ok){setKey('');setGoogle(null);setFileName('');}};
   return <section className="auto-loop panel" aria-label="接続後の自動運転">
-    <div className="between"><div><span className="auto-kicker">接続後の自動運転</span><h2>{running?'次の投稿を、自動で進めています。':'YouTubeを接続して、自動運転へ。'}</h2></div><span className={'loop-state '+(running?'running':'')}>{label}</span></div>
-    <p className="loop-lead">{state.settings.mode==='review'?'手動承認モードです。動画の制作後、あなたの承認を待ちます。':'準備がそろいYouTubeを許可すると、企画・制作・投稿・結果の分析を繰り返します。開始ボタンや毎回の承認は不要です。'}</p>
-    <p className="loop-footnote">既定の公開範囲: {state.settings.privacy==='public'?'全体公開':state.settings.privacy==='private'?'非公開':'限定公開'} · {state.settings.mode==='auto'?'品質検査後に自動投稿・毎回の承認不要':'投稿前に承認'}</p>
+    <div className="between"><div><span className="auto-kicker">接続後の自動運転</span><h2>{native?'動画を作って、Shortsの音源を選ぶ。':running?'次の投稿を、自動で進めています。':'YouTubeを接続して、自動運転へ。'}</h2></div><span className={'loop-state '+(running?'running':'')}>{label}</span></div>
+    <p className="loop-lead">{native?'AI音声と図解の動画を制作し、内容に合う曲を候補として記録します。YouTubeアプリでの音源追加が必要なため、現在は自動公開を保留しています。':state.settings.mode==='review'?'手動承認モードです。動画の制作後、あなたの承認を待ちます。':'準備がそろいYouTubeを許可すると、企画・制作・投稿・結果の分析を繰り返します。開始ボタンや毎回の承認は不要です。'}</p>
+    <p className="loop-footnote">既定の公開範囲: {state.settings.privacy==='public'?'全体公開':state.settings.privacy==='private'?'非公開':'限定公開'} · {native?'音源追加後にYouTubeアプリで公開':state.settings.mode==='auto'?'品質検査後に自動投稿・毎回の承認不要':'投稿前に承認'}</p>
     {caps.budget&&<div className="notice" role="status"><strong>月の予算目標 {caps.budget.totalJpy.toLocaleString('ja-JP')}円</strong><p>AI制作枠 {caps.budget.aiJpy.toLocaleString('ja-JP')}円 · 今月の管理額 {caps.budget.managedUsedJpy.toLocaleString('ja-JP')}円 · 残り {caps.budget.remainingJpy.toLocaleString('ja-JP')}円</p><p className="loop-footnote">{caps.budget.unknownHistory?'過去の不明な費用を確認するまで新規生成を保留します。':caps.budget.blocked?'新規生成を保留しています。':'枠を超える新規生成は自動で待機します。'} サーバー代・税・為替への予備費は{caps.budget.nonAiReserveJpy.toLocaleString('ja-JP')}円。管理額には処理中の予約額を含み、実際の請求額とは異なります（月の区切りはUTC）。請求サービス側の上限設定も必要です。</p></div>}
     {a.targetEmail&&<p className="target-account">投稿に使うGoogleアカウント <strong>{a.targetEmail}</strong></p>}
     {a.reason&&<p role="status" className="notice">{a.reason}{a.retryAt&&<> 次の再試行: {new Date(a.retryAt).toLocaleString('ja-JP')}</>}</p>}

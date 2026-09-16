@@ -16,5 +16,5 @@ export function reviewFile(directory,target) {
 }
 export function reviewPlan(v) {
  if(!v)return null;
- return Object.fromEntries(['id','title','description','genre','contentType','segments','sources','qa','visualQa','originality','captionStyle','narrationSpeed','sceneSeconds','visualVersion','scenePlan','status','youtubeId','actualPrivacy','publicVerifiedAt','thumbnail'].map(k=>[k,k==='segments'?(v.segments||[]).map(({audio,...s})=>s):v[k]]));
+ return Object.fromEntries(['id','title','description','genre','contentType','segments','sources','qa','visualQa','originality','musicChoice','error','captionStyle','narrationSpeed','sceneSeconds','visualVersion','scenePlan','status','youtubeId','actualPrivacy','publicVerifiedAt','thumbnail'].map(k=>[k,k==='segments'?(v.segments||[]).map(({audio,...s})=>s):v[k]]));
 }

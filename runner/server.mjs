@@ -52,6 +52,7 @@ const server=createServer(async(req,res)=>{
   if(url.pathname==='/api/export'&&req.method==='GET'){res.setHeader('Content-Disposition','attachment; filename="shorts-loop-backup.json"');json(engine.publicState().state);return;}
   if(url.pathname.startsWith('/api/media/')&&req.method==='GET'){
    const id=url.pathname.split('/').at(-1);const v=store.read().live.videos.find(x=>x.id===id);assert(v?.videoFile&&existsSync(v.videoFile),'動画はまだ生成されていません。');const file=resolve(v.videoFile);assert(file.startsWith(resolve(store.directory,'media')+'/'),'動画パスが不正です。');
+   if(url.searchParams.get('download')==='1')res.setHeader('Content-Disposition',`attachment; filename="shorts-${id}.mp4"`);
    const size=statSync(file).size;const range=req.headers.range?.match(/^bytes=(\d+)-(\d*)$/);let start=range?Number(range[1]):0,end=range&&range[2]?Number(range[2]):size-1;assert(start<=end&&end<size,'Rangeが不正です。');res.writeHead(range?206:200,{'Content-Type':'video/mp4','Content-Length':end-start+1,'Accept-Ranges':'bytes',...(range?{'Content-Range':`bytes ${start}-${end}/${size}`}:{})});createReadStream(file,{start,end}).pipe(res);return;
   }
   if(url.pathname==='/api/action'&&req.method==='POST'){
@@ -65,7 +66,7 @@ const server=createServer(async(req,res)=>{
    }
    if(b.action==='resume'){assert(b.dataset==='live','実チャンネルで操作してください。');const c=engine.capabilities();assert(c.ai&&c.youtube&&c.renderer,'AI・YouTube・FFmpegの準備が必要です。');if(store.read().settings.mode==='review'){store.update(s=>{s.settings.paused=false;Object.assign(s.automation,{enabled:false,userPaused:false,phase:'running',reason:null});});}else{store.update(s=>{s.automation.enabled=true;s.automation.userPaused=false;s.automation.phase='waiting';s.automation.reason=null;});assert(engine.tryAutoStart(),'公開投稿・アカウントの準備を確認してください。');}queueMicrotask(pump);}
    else if(b.action==='disconnect')await engine.disconnect();
-   else store.update(s=>applyAction(s,b.action,b.payload,b.dataset));
+   else {if(['selectMusic','musicSettings'].includes(b.action))assert(!engine.running,'制作完了後に選曲設定を保存してください。');store.update(s=>applyAction(s,b.action,b.payload,b.dataset));}
    json(engine.publicState());return;
   }
   if(req.method!=='GET'){json({error:'操作が見つかりません。'},404);return;}
