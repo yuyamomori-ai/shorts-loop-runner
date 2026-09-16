@@ -43,7 +43,7 @@ const server=createServer(async(req,res)=>{
    res.writeHead(200,{'Content-Type':file.endsWith('.mp4')?'video/mp4':file.endsWith('.jpg')?'image/jpeg':'application/json','Content-Length':statSync(file).size,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(file).pipe(res);return;
   }
   if(url.pathname==='/api/oauth/start'&&req.method==='GET'){const base=process.env.PUBLIC_BASE_URL||(auth?req.headers['x-shorts-site-origin']:null)||`http://${req.headers.host}`;res.writeHead(302,{Location:oauth.start(base,store.read().automation?.targetEmail),'Cache-Control':'no-store'});res.end();return;}
-  if(url.pathname==='/api/oauth/callback'&&req.method==='GET'){const identity=await oauth.complete(url.searchParams);store.update(s=>{s.automation.verifiedEmail=identity.email;});await engine.channel();engine.tryAutoStart();queueMicrotask(pump);res.writeHead(302,{Location:'/', 'Cache-Control':'no-store'});res.end();return;}
+  if(url.pathname==='/api/oauth/callback'&&req.method==='GET'){const identity=await oauth.complete(url.searchParams);store.update(s=>{s.automation.verifiedEmail=identity.email;if(s.automation.youtubeReconnectRequired){delete s.automation.youtubeReconnectRequired;if(!s.automation.userPaused){s.automation.phase='waiting';s.automation.reason=null;}}});await engine.channel();engine.tryAutoStart();queueMicrotask(pump);res.writeHead(302,{Location:'/', 'Cache-Control':'no-store'});res.end();return;}
   if(url.pathname.startsWith('/api/assets/')&&req.method==='POST'){const chunks=[];let size=0;for await(const c of req){size+=c.length;assert(size<100*1024*1024,'素材は100MB未満にしてください。');chunks.push(c);}await attachAsset(store,url.pathname.split('/').at(-1),Buffer.concat(chunks));json(engine.publicState());return;}
   if(url.pathname.startsWith('/api/validation/')&&req.method==='GET'){const file=validationFile(store.directory,url.pathname);if(!file){json({error:'検証ファイルはまだありません。'},404);return;}res.writeHead(200,{'Content-Type':file.endsWith('.mp4')?'video/mp4':file.endsWith('.jpg')?'image/jpeg':'application/json','Content-Length':statSync(file).size,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(file).pipe(res);return;}
   if(url.pathname==='/healthz'&&req.method==='GET'){json({ok:true});return;}
@@ -74,7 +74,12 @@ const server=createServer(async(req,res)=>{
 server.listen(PORT,HOST,()=>{
  console.log(`Shorts Loop: http://localhost:${PORT}`);
  console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase,stopReason:store.read().automation?.reason||null,retryAt:store.read().automation?.retryAt||null}));
- if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
+ const prepareId=process.env.SHORTSLOOP_PREPARE_VIDEO_ID,prepareRequest=process.env.SHORTSLOOP_PREPARE_REQUEST;
+ const canPrepare=prepareId&&/^[a-zA-Z0-9-]{1,80}$/.test(prepareId)&&prepareRequest&&/^[a-zA-Z0-9-]{1,80}$/.test(prepareRequest)&&(store.read().productionPreparation?.requestId!==prepareRequest||store.read().productionPreparation?.status==='running'&&(store.read().productionPreparation?.attempts||0)<2);
+ if(canPrepare){
+  store.update(s=>{const attempts=s.productionPreparation?.requestId===prepareRequest?(s.productionPreparation.attempts||0)+1:1;s.productionPreparation={requestId:prepareRequest,videoId:prepareId,status:'running',startedAt:now(),attempts};});
+  engine.job('render',{id:prepareId}).then(()=>store.update(s=>{s.productionPreparation.status='ready';s.productionPreparation.finishedAt=now();})).catch(e=>{store.update(s=>{s.productionPreparation.status='failed';s.productionPreparation.error=e.message;});console.error('Production preparation stopped:',e.message);}).finally(()=>pump());
+ }else if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
   engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1'}).catch(e=>console.error('Visual validation stopped:',e.message));
  }else pump();
 });
