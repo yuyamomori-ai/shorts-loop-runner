@@ -40,8 +40,17 @@ export function scienceCardEvents(scene) {
   out+=shape(circle(303,676,8),p.panel)+shape(circle(368,676,8),p.panel);
   out+=shape(circle(337,734,20),p.panel);
   out+=shape(rect(600,669,202,369),p.ink)+shape(rect(613,696,176,291),p.panel);
-  out+=text('?',702,825,138,p.accent,a+.12);
+  out+=text('?',702,825,138,p.accent,a+.55);
+  out+=shape(circle(800,679,43),p.accent,a+.55)+text('!',800,679,55,'FFFFFF',a+.55);
   out+=text('人物・画面はイメージ',530,1150,30);
+ }else if(scene.hook&&/気づ|見落|画面|集中|注意|見る/.test(scene.overlay+labels.join(''))) {
+  // A visible colour change illustrates the question; it is not a diagnostic test.
+  for(let row=0;row<3;row++)for(let col=0;col<3;col++){
+   const x=284+col*246,y=634+row*185;
+   out+=shape(circle(x,y,66),p.soft);
+   if(row===1&&col===2)out+=shape(circle(x,y,66),p.accent,a+.65);
+  }
+  out+=text('画面の変化は説明用イメージ',530,1150,30);
  }else if(layout==='focus'&&!scene.hook) {
   // A close-up keeps the complete relationship visible in a small context strip.
   out+=shape(circle(530,732,137),p.soft)+icon(labels[active],530,710,72);

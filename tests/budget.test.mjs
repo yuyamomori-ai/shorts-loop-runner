@@ -24,9 +24,10 @@ const response=(usage={input_tokens:1000,output_tokens:1000},extra={})=>Response
 test('visual review uses strict issue enums within the same bounded paid request',async t=>{
  const {ai,store}=setup(t);let body;
  t.mock.method(globalThis,'fetch',async(u,o)=>{body=JSON.parse(o.body);return response();});
- await ai.response('review',{schema:VISUAL_REVIEW_SCHEMA});
+ await ai.response('review',{schema:VISUAL_REVIEW_SCHEMA,images:['data:image/jpeg;base64,AA=='],imageLabels:['Frame at 1.2s inside scene 0, from 0s to 3s']});
  assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);assert.equal(body.text.format.schema.additionalProperties,false);
  assert(body.text.format.schema.properties.issues.items.enum.includes('rights'));assert.equal(store.read().usage.aiCalls,1);assert.equal(body.max_output_tokens,7000);
+ assert.equal(body.input[1].content[1].type,'input_text');assert.equal(body.input[1].content[2].detail,'high');
 });
 
 test('default target preserves hosting reserve; config cannot raise total or lower FX allowance',()=>{
