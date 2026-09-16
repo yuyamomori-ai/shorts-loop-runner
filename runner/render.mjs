@@ -101,8 +101,8 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
     if(f)filter+=`,drawbox=x=${Math.round(f.x*1080)}:y=${Math.round(f.y*1920)}:w=${Math.round(f.w*1080)}:h=${Math.round(f.h*1920)}:color=0xaae67a:t=5`;
    }
   }else{
-   input.push('-f','lavfi','-i',`color=c=${['0x102c46','0x172e44','0x1c2941'][scene.variant]}:s=1080x1920:r=30:d=${scene.duration}`);
-   filter=`drawgrid=w=90:h=90:t=1:c=0x58819b@0.1,drawbox=x=60:y=376:w=960:h=882:c=0x294962@0.55:t=2,setsar=1`;
+   input.push('-f','lavfi','-i',`color=c=${['0x101e30','0x182b3b','0x273748'][scene.variant]}:s=1080x1920:r=30:d=${scene.duration}`);
+   filter=`drawgrid=w=120:h=120:t=1:c=0x58819b@0.08,setsar=1`;
   }
   filter+=`,drawbox=x=76:y=1330:w=928:h=195:color=black@0.42:t=fill,format=yuv420p`;
   await run('ffmpeg',[...input,'-an','-vf',filter,'-r','30','-t',String(scene.duration),'-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p',file]);sceneFiles.push(file);
@@ -122,8 +122,10 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  for(let i=0;i<frameTimes.length;i++){
   const f=resolve(dir,`frame-${i}.jpg`);await run('ffmpeg',['-y','-ss',String(frameTimes[i]),'-i',out,'-frames:v','1','-vf','scale=432:768',f],30000);frameFiles.push(f);
  }
+ const coverFile=resolve(dir,'cover.jpg');await run('ffmpeg',['-y','-ss','0.8','-i',out,'-frames:v','1','-q:v','3',coverFile],30000);
+ const cover={file:'cover.jpg',sha256:hash(readFileSync(coverFile)),frameTime:0.8,width:1080,height:1920,style:'large-red-white-outline'};
  const used=allAssets.filter(a=>scenes.some(s=>s.assetId===a.id));
- const manifest={synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:'Original procedural composition generated locally; no third-party music',visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
+ const manifest={cover,synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:'Original procedural composition generated locally; no third-party music',visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
  assert(!requiresExplanation(v)||manifest.explanationCount>0,'説明図がないため投稿を保留します。');
  writeFileSync(resolve(dir,'manifest.json'),JSON.stringify(manifest,null,2));
  if(!retainAudio)cleanRenderIntermediates(directory,v.id);

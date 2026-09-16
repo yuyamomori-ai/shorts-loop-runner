@@ -2,7 +2,7 @@ import {spendingSummary,nextBudgetMonth} from './budget.mjs';
 import {groundPlan,sourceUrlKey} from './planning.mjs';
 import {referencesForNextVideo,benchmarkPrompt,normalizeBenchmarkTrial,purgeBenchmarks} from './benchmarks.mjs';
 import {collectGeneratedMedia,cleanRenderIntermediates} from './storage.mjs';
-import {VISUAL_VERSION,VISUAL_SCHEMA,normalizeVisual,requiresExplanation,visualClaims,usedAssetIds,visualReviewPass,repairableVisualReview} from '../lib/visual.mjs';
+import {VISUAL_VERSION,VISUAL_SCHEMA,CREATIVE_BRIEF,normalizeVisual,requiresExplanation,visualClaims,usedAssetIds,visualReviewPass,repairableVisualReview,normalizeVisualReview} from '../lib/visual.mjs';
 import {initializeAutomation,automationReadiness,startWhenReady,pauseAutomation,requestPublicAutopilot} from '../lib/automation.mjs';
 import {googleClient} from './vault.mjs';
 import {enrichStrategy,chooseAllocation,slotsForDay,dayOf} from '../lib/growth.mjs';
@@ -33,7 +33,7 @@ function applyExperiment(data,v){
 }
 export class Engine {
  constructor(store){this.store=store;this.ai=new OpenAI(store);this.youtube=new YouTube(store.directory);this.running=false;
-  store.update(s=>{initializeAutomation(s,{enabled:process.env.AUTO_START_ON_CONNECT==='true',targetEmail:process.env.YOUTUBE_TARGET_EMAIL||''});if(this.youtube.connected()){const t=readToken(store.directory);if(t?.email)s.automation.verifiedEmail=t.email;}s.settings.derivedApproved=process.env.YOUTUBE_DERIVED_METRICS_APPROVED==='true';s.settings.publicApproved=process.env.YOUTUBE_PUBLIC_UPLOAD_APPROVED==='true';s.settings.dailyAiCalls=Math.max(1,Number(process.env.DAILY_AI_CALLS)||60);s.settings.visualFirst=process.env.SHORTSLOOP_VISUAL_FIRST!=='false';requestPublicAutopilot(s,process.env.SHORTSLOOP_PUBLIC_AUTOPILOT_REQUEST);if(s.automation.publicUploadRequested&&!s.automation.userPaused&&s.automation.phase==='attention'&&s.automation.reason==='TYPE Bには権利確認済みの素材、またはPEXELS_API_KEYが必要です。'&&!s.automation.visualFallbackRecovered&&s.settings.visualFirst){Object.assign(s.automation,{phase:'waiting',reason:null,visualFallbackRecovered:now()});s.settings.paused=true;log(s.live,'repair','以前の素材未接続による停止を解消しました。TYPE Aの根拠付き図解で制作を再開します。');}});
+  store.update(s=>{initializeAutomation(s,{enabled:process.env.AUTO_START_ON_CONNECT==='true',targetEmail:process.env.YOUTUBE_TARGET_EMAIL||''});if(this.youtube.connected()){const t=readToken(store.directory);if(t?.email)s.automation.verifiedEmail=t.email;}s.settings.derivedApproved=process.env.YOUTUBE_DERIVED_METRICS_APPROVED==='true';s.settings.publicApproved=process.env.YOUTUBE_PUBLIC_UPLOAD_APPROVED==='true';s.settings.dailyAiCalls=Math.max(1,Number(process.env.DAILY_AI_CALLS)||60);s.settings.visualFirst=process.env.SHORTSLOOP_VISUAL_FIRST!=='false';requestPublicAutopilot(s,process.env.SHORTSLOOP_PUBLIC_AUTOPILOT_REQUEST,{repairVideoId:process.env.SHORTSLOOP_REPAIR_VIDEO_ID});if(s.automation.publicUploadRequested&&!s.automation.userPaused&&s.automation.phase==='attention'&&s.automation.reason==='TYPE Bには権利確認済みの素材、またはPEXELS_API_KEYが必要です。'&&!s.automation.visualFallbackRecovered&&s.settings.visualFirst){Object.assign(s.automation,{phase:'waiting',reason:null,visualFallbackRecovered:now()});s.settings.paused=true;log(s.live,'repair','以前の素材未接続による停止を解消しました。TYPE Aの根拠付き図解で制作を再開します。');}});
  }
  capabilities(){return {budget:spendingSummary(this.store.read()),runtime:'local',ai:!!this.ai.key,oauthConfigured:!!googleClient(this.store.directory),youtube:this.youtube.connected(),renderer:['ffmpeg','ffprobe'].every(cmd=>(process.env.PATH||'').split(delimiter).some(dir=>existsSync(resolve(dir,cmd+(process.platform==='win32'?'.exe':''))))),scheduler:true,visualFirst:process.env.SHORTSLOOP_VISUAL_FIRST!=='false',narration:!!this.ai.key||!!process.env.VOICEVOX_URL,pexels:!!process.env.PEXELS_API_KEY,publishHold:process.env.SHORTSLOOP_PUBLISH_HOLD==='true',visualVersion:VISUAL_VERSION,popularReferences:process.env.SHORTSLOOP_POPULAR_REFERENCES!=='false'&&this.youtube.connected(),derivedApproved:process.env.YOUTUBE_DERIVED_METRICS_APPROVED==='true',publicApproved:process.env.YOUTUBE_PUBLIC_UPLOAD_APPROVED==='true'};}
  publicState(){const s=this.store.read();delete s.assetSearchCache;delete s.spendGuard;for(const d of [s.live,s.demo])for(const v of d.videos){v.hasUploadSession=!!v.uploadSession;delete v.uploadSession;delete v.uploadIntent;delete v.approvedDigest;if(v.videoFile)v.videoFile=existsSync(v.videoFile);if(v.sourceEvidence)delete v.sourceEvidence;}for(const d of [s.live,s.demo])for(const a of d.assets){if(a.file)a.file=true;delete a.downloadUrl;delete a.providerResponse;}return {state:s,capabilities:this.capabilities(),automation:automationReadiness(s,this.capabilities())};}
@@ -87,7 +87,7 @@ export class Engine {
   const x=q.value;for(const k of ['originality','commentary','editing','educational','entertainment','copyrightRisk','reusedRisk'])assert(Number.isFinite(x[k])&&x[k]>=0&&x[k]<=100,'独自性審査のスコア形式が不正です。');assert(Number.isFinite(x.confidence),'独自性審査の確信度がありません。');return {...x,checkedAt:now(),method:'AIによる制作物の内部評価。法的判定・YouTube審査の代用ではありません。'};
  }
  async repairOriginality(id,review){
-  const v=this.store.read().live.videos.find(x=>x.id===id);const q=await this.ai.response(`日本語Shortsの独自性を1回だけ改善。未確認の事実や新規URLを追加しない。フック1〜2秒、全体20〜60秒。出典対応を保持し、独自の補足とオチ、テンポを改善。映像設計も保持・改善。${VISUAL_SCHEMA}。修正理由=${review.fix}。JSON {"segments":[{"text":"台本","role":"hook|body|answer|cta","sourceIds":["s1"],"effect":"zoom|slow|replay|highlight|clean","callout":"短い任意のツッコミ"}]}。元台本=${JSON.stringify(v.segments)}。出典=${JSON.stringify(v.sources)}`);
+  const v=this.store.read().live.videos.find(x=>x.id===id);const q=await this.ai.response(`日本語Shortsの独自性を1回だけ改善。未確認の事実や新規URLを追加しない。フック1〜2秒、全体20〜60秒。出典対応を保持し、独自の補足とオチ、テンポを改善。映像設計も保持・改善。${CREATIVE_BRIEF} ${VISUAL_SCHEMA}。修正理由=${review.fix}。JSON {"segments":[{"text":"台本","role":"hook|body|answer|cta","sourceIds":["s1"],"effect":"zoom|slow|replay|highlight|clean","callout":"短い任意のツッコミ"}]}。元台本=${JSON.stringify(v.segments)}。出典=${JSON.stringify(v.sources)}`);
   const segments=q.value.segments;assert(Array.isArray(segments)&&segments.length>=4&&segments.length<=10&&segments.every(x=>typeof x.text==='string'&&x.text.length<=150&&Array.isArray(x.sourceIds)),'自動修正の台本が不正です。');
   this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.segments=segments.map(s=>({...s,...normalizeVisual(s)}));delete x.segmentAssets;x.assetIds=x.assetId?[x.assetId]:[];x.revision++;x.approvedRevision=null;x.qa.facts='pending';x.originalityRepairs=(x.originalityRepairs||0)+1;x.status='draft';log(s.live,'repair','独自性審査の結果を使い、台本を1回修正しました。');});await this.ensureVisualPlan(id);await this.verify(id);
  }
@@ -101,7 +101,7 @@ export class Engine {
    const references=options.skipReferences?[]:await referencesForNextVideo(this.store,this.youtube,base.genre);
    const brief={requestedTopic:options.topic||null,visualFirst:true,sceneSeconds:base.sceneSeconds,visualStyle:base.visualStyle,contentType:type,captionStyle:base.captionStyle,narrationSpeed:base.narrationSpeed,editingStyle:base.editingStyle,genre:base.genre,hook:base.hook,structure:base.structure,targetSeconds:base.duration,postingHour:base.hour,experiment:base.experimentId||null,memory:s.settings.derivedApproved?d.memory:{summary:'初期探索'},avoid:d.videos.slice(0,100).map(v=>({topic:v.topic,title:v.title}))};
    const localization=type==='B'?`TYPE Bの日本語独自解説。素材の観察結果=${JSON.stringify(inspection)}。素材提供者情報=${JSON.stringify({title:asset.title,context:asset.context})}。直訳転載は禁止。状況説明→独自のツッコミ→一次資料による背景/科学/文化の補足→オチを作る。人物の気持ちや事件の経緯を創作しない。不明点は不明のまま。ストックは『参考映像』と明示。各segmentにeffectをzoom|slow|replay|highlight|cleanから指定し、calloutを18文字以下で任意指定。素材で視認できる事実はsourceIdsにassetを使える。科学的事実は取得した研究URLのIDを使う。`:'';
-   const prompt=VISUAL_SCHEMA+benchmarkPrompt(references)+'\n'+localization+`日本語の雑学・心理学・科学Shortsを1本企画してください。毎回新規の異なるテーマ。一次資料をweb searchで実際に検索。薬・治療・診断・法律・投資助言を除外。誇大な99%や証明済み表現を禁止。研究の条件と限界を短く含める。30%探索の企画指定を尊重。指定構成を台本に反映。フックは1〜2秒で読める15文字以内。全体20〜60秒・6〜8セグメント・原則160〜240日本語文字、自然な読み上げで25〜45秒。どの構成でも1番目のセグメントは必ずrole=hook、8〜12文字の短い問い。構成 answer_first は2番目のセグメントで答えを出す。experiment は研究方法から具体化。story は問い→説明→結論。指定:${JSON.stringify(brief)}\nJSON形式:{"topic":"独自の短いキーワード","title":"100文字以内","genre":"${base.genre}","hook":"${base.hook}","structure":"${base.structure}","segments":[{"text":"読み上げ台本","role":"hook|body|answer|cta","sourceIds":["s1"]}],"sources":[{"id":"s1","url":"一次情報URL","title":"資料名","publisher":"研究者/組織","summary":"出典が支持する内容"}],"risk":"none"}。心理学・記憶は独立した一次研究または公的解説を2件以上。引用文を長く複製せず日本語で独自に説明。事実のないCTAのsourceIdsは空配列可。`;
+   const prompt=VISUAL_SCHEMA+CREATIVE_BRIEF+benchmarkPrompt(references)+'\n'+localization+`日本語の雑学・心理学・科学Shortsを1本企画してください。毎回新規の異なるテーマ。一次資料をweb searchで実際に検索。薬・治療・診断・法律・投資助言を除外。誇大な99%や証明済み表現を禁止。研究の条件と限界を短く含める。30%探索の企画指定を尊重。指定構成を台本に反映。フックは1〜2秒で読める15文字以内。全体20〜60秒・6〜8セグメント・原則160〜240日本語文字、自然な読み上げで25〜45秒。どの構成でも1番目のセグメントは必ずrole=hook、8〜12文字の短い問い。構成 answer_first は2番目のセグメントで答えを出す。experiment は研究方法から具体化。story は問い→説明→結論。指定:${JSON.stringify(brief)}\nJSON形式:{"topic":"独自の短いキーワード","title":"100文字以内","genre":"${base.genre}","hook":"${base.hook}","structure":"${base.structure}","segments":[{"text":"読み上げ台本","role":"hook|body|answer|cta","sourceIds":["s1"]}],"sources":[{"id":"s1","url":"一次情報URL","title":"資料名","publisher":"研究者/組織","summary":"出典が支持する内容"}],"risk":"none"}。心理学・記憶は独立した一次研究または公的解説を2件以上。引用文を長く複製せず日本語で独自に説明。事実のないCTAのsourceIdsは空配列可。`;
    this.progress('planning',base.id,{genre:base.genre});this.ai.videoId=base.id;let result=await this.ai.response(prompt,{search:true,images:references.map(r=>r.thumbnail).filter(Boolean)});let x=result.value;
    const min=['心理学','記憶'].includes(base.genre)?2:1,observed=new Set(result.sources.map(normalizeUrl));
    if(x.risk==='none'&&(!Array.isArray(x.sources)||x.sources.length<min||!x.sources.every(a=>a.id&&trustedSource(a.url)&&observed.has(normalizeUrl(a.url))))){this.progress('source-plan-repair',base.id,{selected:(x.sources||[]).map(s=>s.url),observed:result.sources.slice(0,12)});result=await groundPlan(this.ai,result,{minSources:min,progress:(stage,extra)=>this.progress(stage,base.id,extra)});x=result.value;}
@@ -149,8 +149,8 @@ export class Engine {
   return this.store.read().live.assets.filter(a=>ids.includes(a.id));
  }
  async reviewVisual(v,result){
-  const q=await this.ai.response(`日本語YouTube Shortsの完成フレームを時系列で審査。最初の2枚は0.25秒・1.2秒、残りは各シーンです。字幕だけの単色動画は不合格。画面の単調さ、台本との関連、図の意味、字幕の重なりと可読性、冒頭、テンポ、オチを厳しく確認。模式図の形自体は論文図ではないが、矢印・数値・因果に誤りがあればfactConcernをtrue。静止フレームから音声品質や動画全体を確認済みとは言わない。内部評価でありYouTube公式スコアではない。JSON {"passed":boolean,"visualVariety":0..100,"visualRelevance":0..100,"explanationClarity":0..100,"hookStrength":0..100,"captionReadability":0..100,"factConcern":boolean,"safetyConcern":boolean,"copyrightConcern":boolean,"issues":["scene_variety|captions|explanation|hook|tempo|fact|safety|rights"],"reason":"日本語","fix":"具体的な編集修正"}。全スコア65以上・懸念なしでのみ合格。台本・図解=${JSON.stringify(visualClaims(v))}。実際の編集記録=${JSON.stringify(result.manifest)}。シーン=${JSON.stringify(result.scenePlan)}`,{images:result.frameFiles.map(f=>'data:image/jpeg;base64,'+readFileSync(f).toString('base64'))});
-  return {...q.value,passed:visualReviewPass(q.value),checkedAt:now(),method:'AIの代表フレーム内部評価 + 全フレームの機械検査'};
+  const q=await this.ai.response(`日本語YouTube Shortsの完成フレームを時系列で審査。最初の2枚は0.25秒・1.2秒時点、残りは各シーン中のサンプルです。サンプルの時刻をシーン長や字幕の表示時間と混同しない。実測のscenePlanとmanifest.captions.minSecondsで尺を評価し、静止画から動きや発話速度は断定しない。字幕だけの単色動画は不合格。画面の単調さ、台本との関連、図の意味、字幕の重なりと可読性、冒頭、テンポ、オチを厳しく確認。模式図の形自体は論文図ではないが、矢印・数値・因果に誤りがあればfactConcernをtrue。静止フレームから音声品質や動画全体を確認済みとは言わない。内部評価でありYouTube公式スコアではない。JSON {"passed":boolean,"visualVariety":0..100,"visualRelevance":0..100,"explanationClarity":0..100,"hookStrength":0..100,"captionReadability":0..100,"factConcern":boolean,"safetyConcern":boolean,"copyrightConcern":boolean,"issues":[],"reason":"日本語","fix":"具体的な編集修正"}。issuesは不合格理由をscene_variety,captions,explanation,hook,tempo,fact,safety,rightsから個別の文字列で列挙し、合格なら空配列。全スコア65以上・懸念なしでのみ合格。台本・図解=${JSON.stringify(visualClaims(v))}。実際の編集記録=${JSON.stringify(result.manifest)}。シーン=${JSON.stringify(result.scenePlan)}`,{images:result.frameFiles.map(f=>'data:image/jpeg;base64,'+readFileSync(f).toString('base64'))});
+  const review=normalizeVisualReview(q.value);return {...review,passed:visualReviewPass(review),checkedAt:now(),method:'AIの代表フレーム内部評価 + 全フレームの機械検査'};
  }
  async verify(id){
   const v=this.store.read().live.videos.find(v=>v.id===id);assert(v,'動画が見つかりません。');const evidence=[];
@@ -261,6 +261,27 @@ export class Engine {
   const visible=status.privacyStatus==='public',processed=status.uploadStatus==='processed'||processing==='succeeded';
   this.store.update(s=>{const x=s.live.videos.find(v=>v.id===id);x.publicationCheck={checkedAt:now(),privacy:status.privacyStatus,uploadStatus:status.uploadStatus,processingStatus:processing,verified:visible&&processed};if(visible&&processed)x.publicVerifiedAt=now();if(failed||!visible){x.status='blocked';x.error='YouTube側の処理・公開状態を確認してください。送信済み動画IDを保持し、再投稿はしません。';pauseAutomation(s,x.error);}});
   this.progress(visible&&processed?'public-verified':'public-processing',id,{youtubeId:v.youtubeId,privacy:status.privacyStatus,uploadStatus:status.uploadStatus,processing,failed});
+  if(visible&&processed)await this.uploadThumbnail(id,token);
+ }
+ async uploadThumbnail(id,token){
+  const v=this.store.read().live.videos.find(v=>v.id===id),cover=v?.mediaManifest?.cover;
+  if(!cover||!v.youtubeId||!v.publicVerifiedAt||v.qa?.visual!=='passed'||v.thumbnail?.status==='set'||v.thumbnail?.status==='unavailable'||(v.thumbnail?.attempts||0)>=2)return;
+  if(v.thumbnail?.retryAt&&Date.parse(v.thumbnail.retryAt)>Date.now())return;
+  const attempts=(v.thumbnail?.attempts||0)+1;
+  try{
+   assert(/^[a-zA-Z0-9-]{1,80}$/.test(id)&&cover.file==='cover.jpg','サムネイルの保存先が不正です。');
+   const file=resolve(this.store.directory,'media',id,'cover.jpg'),bytes=readFileSync(file);
+   assert(bytes.length<2000000&&hash(bytes)===cover.sha256,'確認済みサムネイルが変更されています。');
+   this.store.update(s=>{s.live.videos.find(v=>v.id===id).thumbnail={status:'sending',attempts,sha256:cover.sha256};});
+   const response=await jsonFetch('https://www.googleapis.com/upload/youtube/v3/thumbnails/set?'+new URLSearchParams({videoId:v.youtubeId}),{method:'POST',headers:{Authorization:`Bearer ${token||await this.youtube.token()}`,'Content-Type':'image/jpeg'},body:bytes});
+   assert(response.items?.length,'YouTubeのサムネイル受理を確認できません。');
+   this.store.update(s=>{s.live.videos.find(v=>v.id===id).thumbnail={status:'set',attempts,sha256:cover.sha256,setAt:now()};});
+   this.progress('thumbnail-set',id,{youtubeId:v.youtubeId});
+  }catch(e){
+   const transient=e.status===429||e.status>=500||e.name==='TimeoutError';
+   this.store.update(s=>{s.live.videos.find(v=>v.id===id).thumbnail={status:transient?'retry':'unavailable',attempts,error:e.message,retryAt:transient?new Date(Date.now()+3600000).toISOString():null};});
+   this.progress('thumbnail-pending',id,{reason:e.message});
+  }
  }
  async sync(){
   await this.channel();
@@ -301,10 +322,11 @@ export class Engine {
   if(this.youtube.connected()&&(!s.lastSync||Date.now()-Date.parse(s.lastSync)>86400000))await this.sync();
   s=this.store.read();if(s.settings.paused)return;
   for(const v of s.live.videos.filter(v=>v.youtubeId&&v.status==='published'&&v.privacy==='public'&&!v.publishAt&&!v.publicVerifiedAt))await this.confirmPublication(v.id);
+  for(const v of s.live.videos.filter(v=>v.status==='published'&&v.publicVerifiedAt&&v.thumbnail?.status==='retry'))await this.uploadThumbnail(v.id);
   if(this.store.read().settings.paused)return;
   const local=new Date();const day=dateIn(local,'Asia/Tokyo');const hour=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(local);
   // Prepare ahead of due times. A restart can't duplicate a date-keyed daily plan.
-  if(s.lastPlanDay!==day){const made=s.live.videos.filter(v=>dayOf(v.createdAt)===day&&!['rejected','blocked'].includes(v.status)).length;const remaining=Math.max(0,s.settings.dailyLimit-made);if(remaining>0){if(this.ai.key)await this.generate(1);else this.store.update(s=>plan(s.live,1));}if(remaining<=1)this.store.update(s=>{s.lastPlanDay=day;});}
+  if(s.lastPlanDay!==day&&!s.live.videos.some(v=>['draft','rendering','review','approved','uploading'].includes(v.status))){const made=s.live.videos.filter(v=>dayOf(v.createdAt)===day&&!['rejected','blocked'].includes(v.status)).length;const remaining=Math.max(0,s.settings.dailyLimit-made);if(remaining>0){if(this.ai.key)await this.generate(1);else this.store.update(s=>plan(s.live,1));}if(remaining<=1)this.store.update(s=>{s.lastPlanDay=day;});}
   for(const v of this.store.read().live.videos.filter(v=>v.status==='draft')){if(this.store.read().settings.paused)return;await this.render(v.id);}
   s=this.store.read();if(s.settings.mode==='auto')this.store.update(s=>{for(const v of s.live.videos.filter(x=>x.status==='review')){if(!blockers(v,true).length){v.status='approved';v.approvedRevision=v.revision;v.approvedDigest=digestable(v);v.approvedAt=now();v.autoApproved=true;}}});
   s=this.store.read();const delivered=(s.deliveries||[]).filter(x=>x.day===day).length;const timePattern=s.settings.derivedApproved?s.live.memory.patterns.find(p=>p.dimension==='hour'&&p.effect>=8&&p.n>=10):null;const times=timePattern?[...new Set([timePattern.value,...s.settings.times])].slice(0,s.settings.dailyLimit).sort():s.settings.times;const due=times.filter(t=>t<=hour).length;

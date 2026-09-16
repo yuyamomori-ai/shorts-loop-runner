@@ -5,7 +5,7 @@ import {resolve} from 'node:path';
 // It cannot read the database, credentials, other videos, or invoke any action.
 export function reviewTarget(pathname,configuredId) {
  if(!/^[a-zA-Z0-9-]{1,80}$/.test(configuredId||''))return null;
- const m=pathname.match(/^\/api\/review\/([a-zA-Z0-9-]{1,80})\/(plan\.json|manifest\.json|video\.mp4|frame-\d{1,3}\.jpg)$/);
+ const m=pathname.match(/^\/api\/review\/([a-zA-Z0-9-]{1,80})\/(plan\.json|manifest\.json|video\.mp4|cover\.jpg|frame-\d{1,3}\.jpg)$/);
  return m&&m[1]===configuredId?{id:m[1],name:m[2]}:null;
 }
 export function reviewFile(directory,target) {
@@ -16,5 +16,5 @@ export function reviewFile(directory,target) {
 }
 export function reviewPlan(v) {
  if(!v)return null;
- return Object.fromEntries(['id','title','description','genre','contentType','segments','sources','qa','visualQa','originality','captionStyle','narrationSpeed','sceneSeconds','visualVersion','scenePlan','status','youtubeId','actualPrivacy','publicVerifiedAt'].map(k=>[k,k==='segments'?(v.segments||[]).map(({audio,...s})=>s):v[k]]));
+ return Object.fromEntries(['id','title','description','genre','contentType','segments','sources','qa','visualQa','originality','captionStyle','narrationSpeed','sceneSeconds','visualVersion','scenePlan','status','youtubeId','actualPrivacy','publicVerifiedAt','thumbnail'].map(k=>[k,k==='segments'?(v.segments||[]).map(({audio,...s})=>s):v[k]]));
 }

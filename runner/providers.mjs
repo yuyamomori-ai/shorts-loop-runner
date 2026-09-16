@@ -66,7 +66,7 @@ export class OpenAI {
  }
  async speech(text,file,speed=1.04,role='body'){
   const model=process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts';
-  const instructions=`自然で親しみやすい日本語の科学Shorts。明瞭な発音と自然な間。説明は落ち着いて、疑問や意外な点には控えめな驚き。ロボット的な抑揚や過剰な芝居、急な早口は避ける。声量と声質を前後の文で統一し、語尾を明瞭に。数式・化学式・英字は日本語として自然に読む。${role==='hook'?'冒頭の短い問いは興味を引く調子。':'本文は仕組みを理解できるテンポ。'}`;
+  const instructions=`自然で親しみやすい日本語の科学Shorts。明瞭な発音と自然な間。説明は落ち着いて、疑問や意外な点には控えめな驚き。ロボット的な抑揚や過剰な芝居、急な早口は避ける。声量と声質を前後の文で統一し、語尾を明瞭に。台本内の短いツッコミは親しみのある軽い驚きで、説明に戻る際は落ち着いた調子。入力にないセリフ・笑い声・効果音は足さない。数式・化学式・英字は日本語として自然に読む。${role==='hook'?'冒頭の短い問いは興味を引く調子。':'本文は仕組みを理解できるテンポ。'}`;
   const reservation=this.budget({kind:'speech',model,text});
   const r=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',signal:AbortSignal.timeout(120000),headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify({model,voice:process.env.OPENAI_VOICE||'coral',input:text,speed:Math.max(.95,Math.min(1.15,Number(speed)||1.04)),response_format:'wav',...(!['tts-1','tts-1-hd'].includes(model)?{instructions}:{})})});
   if(!r.ok){let payload={};try{payload=await r.json();}catch{}const e=apiError(r.status,payload,'ナレーションAPI');this.rejectRequest(reservation,e);throw e;}

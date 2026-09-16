@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeVisual,visualPublicationIssues,visualReviewPass,repairableVisualReview,minimumScenes,visualClaims} from '../lib/visual.mjs';
+import {normalizeVisual,visualPublicationIssues,visualReviewPass,repairableVisualReview,normalizeVisualReview,minimumScenes,visualClaims} from '../lib/visual.mjs';
 import {initialState,plan,migrateState,digestable,blockers} from '../lib/core.mjs';
 import {buildScenePlan,sceneFeatures} from '../runner/visual-plan.mjs';
 import {captionEvents,scienceCardEvents} from '../runner/science-cards.mjs';
@@ -17,6 +17,16 @@ test('science without an explanatory diagram fails closed',()=>{const v=video();
 test('AI narration is mandatory and lightweight mode never means production',async()=>{const prior=process.env.VOICEVOX_URL;delete process.env.VOICEVOX_URL;try{await assert.rejects(renderVideo(video(),{directory:'/tmp/no-voice',ai:null}),/ナレーション/);await assert.rejects(renderVideo(video(),{directory:'/tmp/no-voice',preview:false,lightweight:true}),/プレビュー/);}finally{if(prior)process.env.VOICEVOX_URL=prior;}});
 test('captions stay short below visuals and unsafe ASS commands are stripped',()=>{const v=video(),c=captionEvents(v.segments);assert.equal(c.maxLines,2);assert.equal(c.bottom,1490);assert(c.minSeconds>=.95);const s=buildScenePlan(v,v.segments)[0];s.diagramSpec.labels[0]='{\\pos(0,0)}悪意';assert(!scienceCardEvents(s).includes('{\\pos(0,0)}悪意'));});
 test('visual review must be structurally valid and cannot repair facts or rights by editing',()=>{const q={passed:true,visualVariety:80,visualRelevance:80,explanationClarity:80,hookStrength:80,captionReadability:80,safetyConcern:false,factConcern:false,copyrightConcern:false,issues:[]};assert(visualReviewPass(q));assert(!visualReviewPass({...q,hookStrength:undefined}));assert(!repairableVisualReview({...q,factConcern:true,issues:['fact']}));assert(repairableVisualReview({...q,passed:false,issues:['captions','scene_variety']}));});
+test('legacy pipe-delimited visual issues are repairable but unknown/factual issues remain a stop',()=>{
+ const q={passed:false,factConcern:false,safetyConcern:false,copyrightConcern:false,issues:['scene_variety|hook|tempo']};
+ assert.deepEqual(normalizeVisualReview(q).issues,['scene_variety','hook','tempo']);assert(repairableVisualReview(q));
+ for(const issues of [['hook|fact'],['hook|unknown'],[null]])assert(!repairableVisualReview({...q,issues}));
+ assert(!visualReviewPass({...q,passed:true}));
+});
+test('consecutive diagram views use different compositions without changing supported labels',()=>{
+ const v=video(),scenes=buildScenePlan(v,v.segments);assert(scenes.some(s=>s.layout==='focus'));assert(scenes.some(s=>s.layout==='overview'));assert(scenes.every(s=>s.diagramSpec.labels.join('|')==='圧力が下がる|泡が出る'));
+ assert.notEqual(scienceCardEvents({...scenes[0],layout:'overview'}),scienceCardEvents({...scenes[0],hook:false,layout:'focus'}));
+});
 test('approval binds source claims, asset mapping, scene plan and rendered manifest',()=>{const v=readyVisual({...video(),qa:{visual:'passed'}}),before=digestable(v);v.segmentAssets={0:['new']};assert.notEqual(before,digestable(v));const claim=JSON.stringify(visualClaims(v));v.segments[1].diagramSpec.labels[1]='別の関係';assert.notEqual(claim,JSON.stringify(visualClaims(v)));});
 test('preview audio or missing scene counters never bypass production checks',()=>{const v=readyVisual({...video(),qa:{visual:'passed'}});v.mediaManifest.preview=true;assert(visualPublicationIssues(v).some(x=>x.includes('ナレーション')));v.mediaManifest.preview=false;delete v.mediaManifest.sceneCount;assert(visualPublicationIssues(v).length);});
 test('Pexels no longer collapses all content into Type B',()=>{const prior=process.env.PEXELS_API_KEY;process.env.PEXELS_API_KEY='test';try{assert.equal(chooseAllocation({},'contentType','A'), 'A');}finally{if(prior)process.env.PEXELS_API_KEY=prior;else delete process.env.PEXELS_API_KEY;}});

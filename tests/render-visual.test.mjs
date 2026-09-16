@@ -21,6 +21,7 @@ test('multi-asset 1080x1920 encode mixes timed audio, captions and diagrams',{sk
  const p=await probe(r.videoFile);
  assert.equal(p.streams.find(x=>x.codec_type==='video').codec_name,'h264');assert.equal(r.manifest.assetCount,2);assert(r.manifest.explanationCount>0);assert(r.manifest.mechanicalQa.passed);assert(r.scenePlan.length>=8);assert(r.manifest.synthetic);assert.equal(calls,6);
  assert(r.manifest.speech.every(s=>s.sha256&&s.duration>0));assert.equal(r.manifest.captions.maxLines,2);
+ assert.equal(r.manifest.cover.sha256,hash(readFileSync(join(directory,'media',v.id,'cover.jpg'))));
  // The persistent cache ties every sentence to text/model/voice/speed and its byte hash.
  const speech=JSON.parse(readFileSync(join(directory,'media',v.id,'speech-0.json')));assert.equal(speech.sha256,hash(readFileSync(join(directory,'media',v.id,'speech-0.wav'))));
 });

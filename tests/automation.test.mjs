@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,readFileSync,existsSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
+import {hash} from '../runner/providers.mjs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {initialState,applyAction} from '../lib/core.mjs';
@@ -11,6 +12,19 @@ import {Store} from '../runner/store.mjs';
 import {Engine} from '../runner/engine.mjs';
 const ready={ai:true,renderer:true,scheduler:true,oauthConfigured:true,youtube:true,publicApproved:true,derivedApproved:true};
 const armed=()=>{const s=initialState();initializeAutomation(s,{enabled:true,targetEmail:'creator@example.com'});return s;};
+test('only a reviewed immutable cover is set once for a confirmed public video',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'loop-cover-')),store=new Store(dir),engine=new Engine(store);t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
+ const bytes=Buffer.from('test image fixture');mkdirSync(join(dir,'media','cover-test'),{recursive:true});writeFileSync(join(dir,'media','cover-test','cover.jpg'),bytes);
+ store.update(s=>{s.live.videos.push({id:'cover-test',youtubeId:'test-youtube',qa:{visual:'passed'},mediaManifest:{cover:{file:'cover.jpg',sha256:hash(bytes)}}});});let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,opts)=>{calls++;assert(String(url).includes('thumbnails/set?videoId=test-youtube'));assert.equal(opts.method,'POST');assert.deepEqual(opts.body,bytes);return Response.json({items:[{default:{url:'https://i.ytimg.com/test'}}]});});
+ await engine.uploadThumbnail('cover-test','test-token');assert.equal(calls,0);
+ store.update(s=>{s.live.videos[0].publicVerifiedAt=new Date().toISOString();});await engine.uploadThumbnail('cover-test','test-token');await engine.uploadThumbnail('cover-test','test-token');assert.equal(calls,1);assert.equal(store.read().live.videos[0].thumbnail.status,'set');
+});
+test('explicit visual retry reuses only an unsent fact-checked rejection and schedules fresh QA',()=>{
+ const make=()=>{const s=armed();Object.assign(s.automation,{phase:'attention',reason:'一次情報の数が不足しています。'});s.live.videos=[{id:'selected',status:'draft',qa:{facts:'passed',visual:'failed'},visualQa:{passed:false,factConcern:false,safetyConcern:false,copyrightConcern:false,issues:['hook|scene_variety']},approvedDigest:'old'}];return s;};
+ const s=make();requestPublicAutopilot(s,'repair-request',{repairVideoId:'selected'});assert.equal(s.automation.phase,'waiting');assert.equal(s.live.videos[0].qa.visual,'pending');assert.equal(s.live.videos[0].approvedDigest,undefined);assert.equal(s.live.videos[0].privacy,'public');assert.equal(s.live.videos[0].initialPublicRequestId,'repair-request');
+ for(const change of [{youtubeId:'already-sent'},{uploadIntent:{}},{risk:'fact'},{qa:{facts:'failed',visual:'failed'}}]){const s=make();Object.assign(s.live.videos[0],change);requestPublicAutopilot(s,'repair-request',{repairVideoId:'selected'});assert.equal(s.automation.phase,'attention');assert.equal(s.live.videos[0].approvedDigest,'old');}
+});
 test('public autopilot request applies once, preserves safety stops and never invents API audit approval',()=>{
  const s=armed();s.automation.verifiedEmail='creator@example.com';applyAction(s,'pause');
  assert(requestPublicAutopilot(s,'owner-request-1'));assert.equal(s.settings.privacy,'public');assert.equal(s.settings.mode,'auto');assert.equal(s.settings.publicApproved,false);
@@ -64,6 +78,6 @@ test('a long or misplaced hook gets one bounded rewrite while sources and body r
  const dir=mkdtempSync(join(tmpdir(),'loop-hook-')),store=new Store(dir),engine=new Engine(store);
  try{const candidate={title:'覚える仕組み',sources:[{id:'s1',url:'https://www.nasa.gov/example'}],segments:[{role:'body',text:'長い冒頭の文章をそのまま読み上げ続けないための例です。',sourceIds:['s1'],overlay:'覚える仕組み'},{role:'body',text:'説明の文章。',sourceIds:['s1']}]};const body=JSON.stringify(candidate.segments[1]),sources=JSON.stringify(candidate.sources);let calls=0;
  engine.ai.response=async()=>{calls++;return {value:{text:'どう覚える？'}};};await engine.shortenHook(candidate,'hook-test');assert.equal(candidate.segments[0].role,'hook');assert.equal(candidate.segments[0].text,'どう覚える？');assert.equal(JSON.stringify(candidate.segments[1]),body);assert.equal(JSON.stringify(candidate.sources),sources);await engine.shortenHook(candidate,'hook-test');assert.equal(calls,1);
- const s=armed();Object.assign(s.automation,{phase:'attention',reason:'冒頭を1〜2秒で読める長さにできませんでした。'});requestPublicAutopilot(s,'hook-repair-request');assert.equal(s.automation.phase,'waiting');s.automation.phase='attention';s.automation.reason='事実確認が完了しなかったため、自動運転を停止しました。';requestPublicAutopilot(s,'another-request');assert.equal(s.automation.phase,'attention');
+ const s=armed();Object.assign(s.automation,{phase:'attention',reason:'冒頭を1〜2秒で読める長さにできませんでした。'});requestPublicAutopilot(s,'hook-repair-request');assert.equal(s.automation.phase,'waiting');s.automation.phase='attention';s.automation.reason='事実確認が完了しなかったため、自動運転を停止しました。';s.live.videos.push({id:'failed-fact',status:'blocked',qa:{facts:'failed'}});requestPublicAutopilot(s,'another-request');assert.equal(s.automation.phase,'waiting');assert.equal(s.live.videos[0].status,'blocked');
  }finally{store.close();rmSync(dir,{recursive:true,force:true});}
 });
