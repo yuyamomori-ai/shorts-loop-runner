@@ -50,7 +50,7 @@ function accountingDiagnostics(s,entry){
  for(const r of entry.requests){
   if(r.bookedUsd>r.reservedUsd)bookedOverruns++;
   if(r.status==='reserved')unresolvedReservations++;
-  const ledger=ledgerByReservation.get(r.id),calls=Number.isSafeInteger(ledger?.searchCalls)?ledger.searchCalls:0;maxObservedSearchCalls=Math.max(maxObservedSearchCalls,calls);
+  const ledger=ledgerByReservation.get(r.id),calls=Number.isSafeInteger(r.searchCalls)?r.searchCalls:Number.isSafeInteger(ledger?.searchCalls)?ledger.searchCalls:0;maxObservedSearchCalls=Math.max(maxObservedSearchCalls,calls);
   if(r.kind==='response'&&calls>(r.search?MAX_SEARCH_CALLS:0))unexpectedToolCalls++;
  }
  return {accountingHold:!!entry.overrun,bookedOverruns,unexpectedToolCalls,unresolvedReservations,maxObservedSearchCalls,requestCount:entry.requests.length,reconciledUnexpectedToolCalls:entry.reconciledUnexpectedToolCalls||0};
@@ -93,6 +93,7 @@ export function settleSpend(s,reservation,{usage,searchCalls=0,rejected=false}={
  if(r.kind==='response'&&Number.isSafeInteger(usage?.input_tokens)&&usage.input_tokens>=0&&Number.isSafeInteger(usage?.output_tokens)&&usage.output_tokens>=0&&Number.isSafeInteger(searchCalls)&&searchCalls>=0){
   estimate=round((usage.input_tokens*.25+usage.output_tokens*2)/1e6+searchCalls*.01);
  }else if(r.kind==='speech'&&['tts-1','tts-1-hd'].includes(r.model))estimate=r.reservedUsd;
+ if(r.kind==='response')r.searchCalls=searchCalls;
  r.bookedUsd=estimate??r.reservedUsd;r.status=estimate===null?'conservative':'estimated';r.estimatedUsd=estimate;
  if(r.bookedUsd>r.reservedUsd||r.kind==='response'&&searchCalls>(r.search?MAX_SEARCH_CALLS:0))entry.overrun=true;
  return {estimatedUsd:estimate,bookedUsd:r.bookedUsd};

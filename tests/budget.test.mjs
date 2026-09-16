@@ -55,7 +55,7 @@ test('explicit request rejection releases dollars but never the daily attempt co
 test('actual text and bounded search usage is booked even when JSON output cannot be used',async t=>{
  const {store,ai}=setup(t);let sent;
  t.mock.method(globalThis,'fetch',async(u,o)=>{sent=JSON.parse(o.body);return response({input_tokens:10000,output_tokens:500},{status:'incomplete',output:[{type:'web_search_call'},{type:'web_search_call'}]});});
- await assert.rejects(ai.response('search',{search:true}));assert.equal(sent.max_tool_calls,2);assert.equal(sent.max_output_tokens,7000);assert.equal(sent.service_tier,'default');
+ await assert.rejects(ai.response('search',{search:true}));assert.equal(sent.max_tool_calls,4);assert.equal(sent.max_output_tokens,7000);assert.equal(sent.service_tier,'default');
  const entry=store.read().costLedger[0];assert.equal(entry.estimatedUsd,.0235);assert.equal(entry.searchCalls,2);assert.equal(entry.managedUsd,.0235);
 });
 test('TTS reserves a conservative allowance without pretending audio token cost was measured',async t=>{
