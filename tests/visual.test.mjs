@@ -23,6 +23,10 @@ test('caption timeline preserves the sentence across shorter independent scene c
  assert.equal(captions.timeline.map(x=>x.text).join(''),text);assert(captions.timeline.every((x,i)=>!i||x.start===captions.timeline[i-1].end));
  assert(captions.timeline.some(x=>x.start<3&&x.end>3));
 });
+test('Japanese caption cards do not split the scientific word 誤情報',()=>{
+ const text='実験では映像を見たあとに誤情報を聞き、後日の検査で答えを比べました。';
+ const cards=captionChunks(text);assert.equal(cards.join(''),text);assert(cards.some(x=>x.includes('誤情報')));assert(cards.every(x=>Array.from(x).length<=26));
+});
 test('tempo repair does not accelerate cuts when QA requests more reading time',()=>{
  const v=video(36),base=buildScenePlan(v,v.segments),fixed=buildScenePlan(v,v.segments,[],{repair:1,repairIssues:['tempo']});
  assert(fixed.length<=base.length);assert(fixed.length>=minimumScenes(36));assert.equal(fixed.at(-1).end,36);assert(fixed.every(x=>x.duration<=4));
@@ -40,5 +44,6 @@ test('consecutive diagram views use different compositions without changing supp
 });
 test('approval binds source claims, asset mapping, scene plan and rendered manifest',()=>{const v=readyVisual({...video(),qa:{visual:'passed'}}),before=digestable(v);v.segmentAssets={0:['new']};assert.notEqual(before,digestable(v));const claim=JSON.stringify(visualClaims(v));v.segments[1].diagramSpec.labels[1]='別の関係';assert.notEqual(claim,JSON.stringify(visualClaims(v)));});
 test('preview audio or missing scene counters never bypass production checks',()=>{const v=readyVisual({...video(),qa:{visual:'passed'}});v.mediaManifest.preview=true;assert(visualPublicationIssues(v).some(x=>x.includes('ナレーション')));v.mediaManifest.preview=false;delete v.mediaManifest.sceneCount;assert(visualPublicationIssues(v).length);});
+test('a narration master awaiting native Shorts sound cannot be automatically published',()=>{const v=readyVisual({...video(),qa:{visual:'passed'}});v.mediaManifest.musicEvidence={selectionStatus:'pending_native_selection'};assert(visualPublicationIssues(v).some(x=>x.includes('サウンド追加')));});
 test('Pexels no longer collapses all content into Type B',()=>{const prior=process.env.PEXELS_API_KEY;process.env.PEXELS_API_KEY='test';try{assert.equal(chooseAllocation({},'contentType','A'), 'A');}finally{if(prior)process.env.PEXELS_API_KEY=prior;else delete process.env.PEXELS_API_KEY;}});
 test('visual learning excludes small samples and marks mature observations non-causal',()=>{const s=initialState();for(let i=0;i<20;i++){const v={id:'v'+i,synthetic:false,mediaManifest:{visualVersion:1,preview:false,diagramCount:i<10?1:4},qa:{facts:'passed'}};s.live.videos.push(v);s.live.metrics.push({videoId:v.id,origin:'youtube',complete:true,windowDays:7,engagedViews:200,averageViewPercentage:i<10?60:85});}enrichStrategy(s.live,s.settings);assert(s.live.memory.visualPatterns.length>=2);assert(s.live.memory.visualPatterns.every(p=>p.n>=8&&p.isCausalProof===false));s.live.metrics=s.live.metrics.slice(0,4);enrichStrategy(s.live,s.settings);assert.equal(s.live.memory.visualPatterns.length,0);});

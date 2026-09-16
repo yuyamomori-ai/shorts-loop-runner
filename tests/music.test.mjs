@@ -7,3 +7,7 @@ test('original background music is bounded PCM with stable provenance and no ext
  let peak=0;for(let i=44;i<a.bytes.length;i+=2)peak=Math.max(peak,Math.abs(a.bytes.readInt16LE(i)));assert(peak>100&&peak<4000);assert.equal(a.metadata.externalSamples,false);assert.equal(a.metadata.trendVerified,false);
  assert.throws(()=>composeMusic(100));assert.throws(()=>composeMusic(NaN));
 });
+test('native Shorts sound mode contains effects only, never a substitute song',()=>{
+ const silence=composeMusic(2,[],'one',undefined,{effectsOnly:true});assert(silence.bytes.subarray(44).every(x=>x===0));assert.equal(silence.metadata.hasBackgroundMusic,false);
+ const effects=composeMusic(2,[.5],'one',undefined,{effectsOnly:true});assert(effects.bytes.subarray(44).some(x=>x!==0));assert.equal(effects.metadata.style,'effects-only');
+});

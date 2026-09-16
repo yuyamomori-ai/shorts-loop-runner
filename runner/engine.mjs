@@ -168,13 +168,14 @@ export class Engine {
  }
  async polishPresentation(id){
   const v=this.store.read().live.videos.find(v=>v.id===id);
-  assert(v&&!v.youtubeId&&!v.uploadIntent&&!v.risk&&v.qa.facts==='passed'&&(v.presentationRepairAttempts||0)<1,'台本の再編集条件を満たしていません。');
+  assert(v&&!v.youtubeId&&!v.uploadIntent&&!v.risk&&v.qa.facts==='passed'&&(v.presentationRepairAttempts||0)<2,'台本の再編集条件を満たしていません。');
   this.store.update(s=>{s.live.videos.find(v=>v.id===id).presentationRepairAttempts=(v.presentationRepairAttempts||0)+1;});
   this.progress('presentation-repair',id);
-  const q=await this.ai.response(`事実確認済みの台本を一度だけ、親しみやすい科学Shortsに再編集する。出典と事実を増やさず、話題を一つに絞る。論文調の前置きや専門語を減らし、短いツッコミを一つ読み上げ本文へ含める。6〜8セグメント、全体130〜185文字を目標に必ず220文字以内。最初のhookは6〜10文字で必ず12文字以内。残りは短い話し言葉。研究の条件・限界は短く必ず残す。${CREATIVE_BRIEF} ${VISUAL_SCHEMA}。出力JSON {"segments":[{"text":"文","role":"hook|body|answer|cta","sourceIds":["s1"],...visual fields}]}。使用できる出典IDは元の出典だけ。元台本=${JSON.stringify(v.segments)}。取得済み資料=${JSON.stringify(v.sourceEvidence||v.sources)}`);
+  const q=await this.ai.response(`事実確認済みの台本を、親しみやすい科学Shortsに再編集する。textはそのまま声で読む自然な会話文にする。矢印・箇条書き・「答え：」「結論：」「報告あり」のようなメモ書きをtextに入れない。図解の矢印はdiagramSpecだけに置く。ひとつの実験の説明を重複しない。専門語は可能な限り日常語へ言い換える。短いツッコミは独立した一文にし、研究参加者をからかわない。出典と事実を増やさず、話題を一つに絞る。論文調の前置きや専門語を減らし、短いツッコミを一つ読み上げ本文へ含める。6〜8セグメント、全体130〜185文字を目標に必ず220文字以内。最初のhookは6〜10文字で必ず12文字以内。残りは短い話し言葉。研究の条件・限界は短く必ず残す。${CREATIVE_BRIEF} ${VISUAL_SCHEMA}。出力JSON {"segments":[{"text":"文","role":"hook|body|answer|cta","sourceIds":["s1"],...visual fields}]}。使用できる出典IDは元の出典だけ。元台本=${JSON.stringify(v.segments)}。取得済み資料=${JSON.stringify(v.sourceEvidence||v.sources)}`);
   const segments=q.value.segments,sourceIds=new Set(v.sources.map(s=>s.id));if(v.assetId)sourceIds.add('asset');
   assert(Array.isArray(segments)&&segments.length>=5&&segments.length<=8&&segments.every(s=>typeof s.text==='string'&&s.text.length>0&&s.text.length<=100&&Array.isArray(s.sourceIds)&&s.sourceIds.every(id=>sourceIds.has(id))),'再編集した台本の形式・根拠IDが不正です。');
   assert(segments[0].role==='hook'&&Array.from(segments[0].text).length<=12&&segments.reduce((n,s)=>n+Array.from(s.text).length,0)<=220,'再編集した台本が長すぎます。');
+  assert(segments.every(s=>!/[→⇒]|^(答え|結論|実験)[:：]/.test(s.text)),'読み上げ台本に図解記号やメモ書きが残っています。');
   const normalized=segments.map(s=>({...s,...normalizeVisual(s)}));
   this.store.update(s=>{const x=s.live.videos.find(v=>v.id===id);x.segments=normalized;x.revision++;x.approvedRevision=null;delete x.approvedDigest;x.qa.facts='pending';delete x.mediaManifest;delete x.videoFile;delete x.segmentAssets;x.assetIds=x.assetId?[x.assetId]:[];});
   await this.verify(id);
@@ -185,7 +186,7 @@ export class Engine {
   let v=this.store.read().live.videos.find(x=>x.id===id);assert(v&&!v.synthetic,'対象動画がありません。');
   assert(!v.uploadIntent&&!v.youtubeId&&!['published','uploading','scheduled'].includes(v.status),'送信済み動画は再生成できません。');
   if(!lightweight){await this.ensureVisualPlan(id);v=this.store.read().live.videos.find(x=>x.id===id);if(v.qa.facts!=='passed'||v.verifiedContentHash!==hash(JSON.stringify(visualClaims(v))))await this.verify(id);}
-  if(!preview&&!lightweight&&(v.presentationRepairAttempts||0)<1&&v.segments.reduce((n,s)=>n+Array.from(s.text).length,0)>240)await this.polishPresentation(id);
+  if(!preview&&!lightweight&&(v.presentationRepairAttempts||0)<2&&(v.segments.reduce((n,s)=>n+Array.from(s.text).length,0)>240||v.segments.some(s=>/[→⇒]|^(答え|結論|実験)[:：]/.test(s.text))))await this.polishPresentation(id);
   v=this.store.read().live.videos.find(x=>x.id===id);assert(!v.risk,'確認待ちのリスクがあります。');
   this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.status='rendering';delete x.error;x.approvedRevision=null;delete x.approvedDigest;x.revision++;x.qa.technical='pending';x.qa.visual='pending';});
   try{
@@ -217,6 +218,7 @@ export class Engine {
  async upload(id,automatic=false){
   this.activeVideoId=id;
   assert(process.env.SHORTSLOOP_PUBLISH_HOLD!=='true','公開前の検証中のため送信を保留しています。');
+  assert(process.env.SHORTSLOOP_MUSIC_MODE!=='shorts-library','YouTube Shortsのサウンド選択待ちです。このAPI送信で音源を追加したことにはできません。');
   let s=this.store.read(),v=s.live.videos.find(x=>x.id===id);assert(v&&!v.synthetic,'対象動画がありません。');
   assert(!v.youtubeId&&!['published','scheduled'].includes(v.status),'この動画は送信済みです。');
   for(const assetId of usedAssetIds(v)){const a=s.live.assets.find(a=>a.id===assetId);assert(assetReady(a)&&a.inspectionSha256===a.sha256&&a.inspection?.usable===true&&hash(readFileSync(a.file))===a.sha256,'投稿前の素材権利・整合性チェックに失敗しました。');}

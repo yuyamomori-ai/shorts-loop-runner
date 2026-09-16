@@ -21,7 +21,7 @@ const store=new Store(DATA),engine=new Engine(store),oauth=new OAuthFlow(store.d
 store.update(s=>{for(const v of s.live.videos){if(v.status==='uploading'){if(v.uploadSession)v.status='approved';else{v.status='blocked';v.error='前回の送信結果を確認する必要があります。';pauseAutomation(s,v.error);}}if(v.status==='rendering'&&!v.youtubeId&&!v.uploadIntent){v.status='draft';v.error='再起動で中断した制作を、保存済み音声から再試行します。';v.approvedRevision=null;delete v.approvedDigest;}}});
 engine.housekeep();
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.mp4':'video/mp4','.json':'application/json'};
-const pump=()=>{if(engine.running||process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)}))return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
+const pump=()=>{if(engine.running)return;if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)}))return;if(process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
 const secureEqual=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y);};
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');

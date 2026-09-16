@@ -115,7 +115,19 @@ export function sceneOverlayEvents(scene) {
 }
 export function captionChunks(text) {
  const chars=Array.from(assSafe(text)),cards=[];
- while(chars.length){let end=Math.min(26,chars.length);if(chars.length>26){for(let i=end-1;i>=11;i--)if(/[。！？、：]/.test(chars[i])){end=i+1;break;}if(chars.length-end<10)end=Math.ceil(chars.length/2);}cards.push(chars.splice(0,end).join(''));}
+ const segmenter=new Intl.Segmenter('ja',{granularity:'word'});
+ while(chars.length){
+  let end=Math.min(26,chars.length);
+  if(chars.length>26){
+   const count=Math.ceil(chars.length/26),target=chars.length/count,minimum=Math.max(8,chars.length-(count-1)*26);let offset=0,best=Infinity;
+   for(const part of segmenter.segment(chars.join(''))){
+    offset+=Array.from(part.segment).length;if(offset>26)break;if(offset<minimum||chars.length-offset<8)continue;
+    const bonus=/[。！？、？：]$/.test(part.segment)?4:/[はがをにでともや]$/.test(part.segment)?1.3:0,score=Math.abs(offset-target)-bonus;
+    if(score<best){best=score;end=offset;}
+   }
+  }
+  cards.push(chars.splice(0,end).join(''));
+ }
  return cards;
 }
 export function captionEvents(segments,{size=52}={}) {

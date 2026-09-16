@@ -1,6 +1,6 @@
 // Original synthesized accompaniment. No sampled songs or third-party recordings.
 const presets={curious:{bpm:104,notes:[0,7,12,4,7,16,12,7]},playful:{bpm:116,notes:[0,4,7,12,9,7,4,2]},calm:{bpm:92,notes:[0,7,4,11,7,12,4,7]}};
-export function composeMusic(seconds,sceneStarts=[],seed='',requestedStyle) {
+export function composeMusic(seconds,sceneStarts=[],seed='',requestedStyle,{effectsOnly=false}={}) {
  if(!Number.isFinite(seconds)||seconds<1||seconds>60)throw Error('BGMの尺が不正です。');
  let state=2166136261;for(const c of String(seed))state=Math.imul(state^c.charCodeAt(0),16777619)>>>0;
  const style=Object.hasOwn(presets,requestedStyle)?requestedStyle:Object.keys(presets)[state%3],p=presets[style],root=[196,220,246.94][(state>>>4)%3];
@@ -16,9 +16,9 @@ export function composeMusic(seconds,sceneStarts=[],seed='',requestedStyle) {
   const kick=Math.sin(2*Math.PI*(53*beatPhase+3*(1-Math.exp(-beatPhase*30))))*Math.exp(-beatPhase*28)*.025;
   const hat=noise*Math.exp(-phase*110)*.003;
   const bass=Math.sin(2*Math.PI*root/2*t)*Math.exp(-beatPhase*7)*.007;
-  let y=(pluck+kick+hat+bass)*fade;
+  let y=effectsOnly?0:(pluck+kick+hat+bass)*fade;
   for(const start of starts){const dt=t-start;if(dt>=0&&dt<.09)y+=Math.sin(2*Math.PI*(740*dt+900*dt*dt))*.012*(1-dt/.09);}
   bytes.writeInt16LE(Math.round(Math.max(-.12,Math.min(.12,y))*32767),44+i*2);
  }
- return {bytes,metadata:{provider:'ShortLOOP original synthesis',version:1,style,bpm:p.bpm,externalSamples:false,trendVerified:false,commercialAllowed:true,modificationAllowed:true}};
+ return {bytes,metadata:{provider:'ShortLOOP original synthesis',version:1,style:effectsOnly?'effects-only':style,bpm:effectsOnly?null:p.bpm,hasBackgroundMusic:!effectsOnly,externalSamples:false,trendVerified:false,commercialAllowed:true,modificationAllowed:true}};
 }
