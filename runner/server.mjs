@@ -1,5 +1,6 @@
 import {validationFile} from './validation-files.mjs';
 import {reviewTarget,reviewFile,reviewPlan} from './review-files.mjs';
+import {startPreparation} from './preparation.mjs';
 import {configureConnections} from './vault.mjs';
 import {pauseAutomation} from '../lib/automation.mjs';
 import {OAuthFlow} from './oauth-flow.mjs';
@@ -20,7 +21,7 @@ const store=new Store(DATA),engine=new Engine(store),oauth=new OAuthFlow(store.d
 store.update(s=>{for(const v of s.live.videos){if(v.status==='uploading'){if(v.uploadSession)v.status='approved';else{v.status='blocked';v.error='前回の送信結果を確認する必要があります。';pauseAutomation(s,v.error);}}if(v.status==='rendering'&&!v.youtubeId&&!v.uploadIntent){v.status='draft';v.error='再起動で中断した制作を、保存済み音声から再試行します。';v.approvedRevision=null;delete v.approvedDigest;}}});
 engine.housekeep();
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.mp4':'video/mp4','.json':'application/json'};
-const pump=()=>{if(engine.running||process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
+const pump=()=>{if(engine.running||process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)}))return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
 const secureEqual=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y);};
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');
@@ -74,11 +75,8 @@ const server=createServer(async(req,res)=>{
 server.listen(PORT,HOST,()=>{
  console.log(`Shorts Loop: http://localhost:${PORT}`);
  console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase,stopReason:store.read().automation?.reason||null,retryAt:store.read().automation?.retryAt||null}));
- const prepareId=process.env.SHORTSLOOP_PREPARE_VIDEO_ID,prepareRequest=process.env.SHORTSLOOP_PREPARE_REQUEST;
- const canPrepare=prepareId&&/^[a-zA-Z0-9-]{1,80}$/.test(prepareId)&&prepareRequest&&/^[a-zA-Z0-9-]{1,80}$/.test(prepareRequest)&&(store.read().productionPreparation?.requestId!==prepareRequest||store.read().productionPreparation?.status==='running'&&(store.read().productionPreparation?.attempts||0)<2);
- if(canPrepare){
-  store.update(s=>{const attempts=s.productionPreparation?.requestId===prepareRequest?(s.productionPreparation.attempts||0)+1:1;s.productionPreparation={requestId:prepareRequest,videoId:prepareId,status:'running',startedAt:now(),attempts};});
-  engine.job('render',{id:prepareId}).then(()=>store.update(s=>{s.productionPreparation.status='ready';s.productionPreparation.finishedAt=now();})).catch(e=>{store.update(s=>{s.productionPreparation.status='failed';s.productionPreparation.error=e.message;});console.error('Production preparation stopped:',e.message);}).finally(()=>pump());
+ if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)})){
+  console.log('Production preparation queued; waiting for the current worker when necessary.');
  }else if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
   engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1'}).catch(e=>console.error('Visual validation stopped:',e.message));
  }else pump();

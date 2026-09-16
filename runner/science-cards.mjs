@@ -102,7 +102,7 @@ export function sceneOverlayEvents(scene) {
 }
 export function captionChunks(text) {
  const chars=Array.from(assSafe(text)),cards=[];
- while(chars.length){let end=Math.min(26,chars.length);if(chars.length>26){for(let i=end-1;i>=11;i--)if(/[。！？、：]/.test(chars[i])){end=i+1;break;}if(chars.length-end<6)end=chars.length-6;}cards.push(chars.splice(0,end).join(''));}
+ while(chars.length){let end=Math.min(26,chars.length);if(chars.length>26){for(let i=end-1;i>=11;i--)if(/[。！？、：]/.test(chars[i])){end=i+1;break;}if(chars.length-end<10)end=Math.ceil(chars.length/2);}cards.push(chars.splice(0,end).join(''));}
  return cards;
 }
 export function captionEvents(segments,{size=52}={}) {
