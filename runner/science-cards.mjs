@@ -64,7 +64,7 @@ export function scienceCardEvents(scene) {
  }else if(type==='process'&&layout==='overview') {
   const w=800/n;
   labels.forEach((label,i)=>{
-   const x=130+w*(i+.5),t=a+i*.13;
+   const x=130+w*(i+.5),t=a+i*.35;
    out+=shape(circle(x,725,n===3?90:122),i===active?p.soft:p.panel,t)+icon(label,x,715,n===3?50:65,t);
    out+=text(label,x,945,n===3?43:54,p.ink,t,w-30);
    out+=text(String(i+1),x,570,33,p.accent);
@@ -72,7 +72,7 @@ export function scienceCardEvents(scene) {
   });
  }else if(type==='process') {
   labels.forEach((label,i)=>{
-   const y=590+i*(n===2?350:237),t=a+i*.12;
+   const y=590+i*(n===2?350:237),t=a+i*.35;
    out+=shape(rect(120,y-60,810,134),i===active?p.soft:p.panel,t);
    out+=icon(label,208,y,40,t)+text(label,588,y,51,p.ink,t);
    if(i<n-1)out+=arrow(530,y+(n===2?175:120),true);
@@ -96,7 +96,11 @@ export function scienceCardEvents(scene) {
  }
  if(d?.caption)out+=text(d.caption,530,1194,27);
  // A visible progressive reveal and small pan keep motion inside the safe card area.
- if(scene.effect==='pan')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>Number(x)>0?`\\move(${Number(x)-10},${y},${Number(x)+10},${y})`:`\\pos(${x},${y})`);
+ if(scene.effect==='pan')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>`\\move(${Number(x)-12},${y},${Number(x)+12},${y})`);
+ if(scene.effect==='zoom')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>{
+  const from=.94,to=1.045,cx=530,cy=840,ms=Math.max(1,Math.round((b-a)*1000));
+  return `\\move(${(cx+(Number(x)-cx)*from).toFixed(1)},${(cy+(Number(y)-cy)*from).toFixed(1)},${(cx+(Number(x)-cx)*to).toFixed(1)},${(cy+(Number(y)-cy)*to).toFixed(1)})\\fscx94\\fscy94\\t(0,${ms},\\fscx104.5\\fscy104.5)`;
+ });
  return out;
 }
 export function sceneOverlayEvents(scene) {
