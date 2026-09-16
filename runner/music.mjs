@@ -1,5 +1,10 @@
 // Original synthesized accompaniment. No sampled songs or third-party recordings.
 const presets={curious:{bpm:104,notes:[0,7,12,4,7,16,12,7]},playful:{bpm:116,notes:[0,4,7,12,9,7,4,2]},calm:{bpm:92,notes:[0,7,4,11,7,12,4,7]}};
+export function musicStyleFor(video) {
+ if(Object.hasOwn(presets,video.musicStyle))return video.musicStyle;
+ const context=(video.genre||'')+(video.title||'');
+ return /心理|記憶|研究|脳/.test(context)?'calm':/面白|笑|動物|ハプニング/.test(context)?'playful':'curious';
+}
 export function composeMusic(seconds,sceneStarts=[],seed='',requestedStyle,{effectsOnly=false}={}) {
  if(!Number.isFinite(seconds)||seconds<1||seconds>60)throw Error('BGMの尺が不正です。');
  let state=2166136261;for(const c of String(seed))state=Math.imul(state^c.charCodeAt(0),16777619)>>>0;

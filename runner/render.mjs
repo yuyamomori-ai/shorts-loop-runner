@@ -1,4 +1,4 @@
-import {composeMusic} from './music.mjs';
+import {composeMusic,musicStyleFor} from './music.mjs';
 import {cleanRenderIntermediates} from './storage.mjs';
 import {mkdirSync,writeFileSync,readFileSync,existsSync,readdirSync,renameSync,unlinkSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -110,7 +110,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  }
  const list=resolve(dir,'scenes.txt');writeFileSync(list,sceneFiles.map(f=>`file '${f.replaceAll('\\','/').replaceAll("'","'\\''")}'`).join('\n'));
  const nativeSound=process.env.SHORTSLOOP_MUSIC_MODE==='shorts-library';
- const music=resolve(dir,'music.wav'),soundtrack=composeMusic(cursor,scenes.filter((s,i)=>!i||s.effect==='highlight'||s.callout).map(x=>x.start),v.id,v.musicStyle,{effectsOnly:nativeSound});writeFileSync(music,soundtrack.bytes);
+ const music=resolve(dir,'music.wav'),soundtrack=composeMusic(cursor,scenes.filter((s,i)=>!i||s.effect==='highlight'||s.callout).map(x=>x.start),v.id,musicStyleFor(v),{effectsOnly:nativeSound});writeFileSync(music,soundtrack.bytes);
  const input=['-y','-f','concat','-safe','0','-i',list];
  for(const f of lightweight?[music]:[...segments.map(x=>x.audio),music])input.push('-i',f);
  let af;

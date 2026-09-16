@@ -6,8 +6,8 @@ import {join} from 'node:path';
 import {run,renderVideo,probe} from '../runner/render.mjs';
 import {hash} from '../runner/providers.mjs';
 // This exercises encoding/mixing only. Tone fixtures are never claimed to be real AI speech.
-test('multi-asset 1080x1920 encode mixes timed audio, captions and diagrams',{skip:process.env.RUN_RENDER_TESTS!=='true',timeout:600000},async t=>{
- const priorMode=process.env.SHORTSLOOP_MUSIC_MODE;process.env.SHORTSLOOP_MUSIC_MODE='shorts-library';t.after(()=>{if(priorMode===undefined)delete process.env.SHORTSLOOP_MUSIC_MODE;else process.env.SHORTSLOOP_MUSIC_MODE=priorMode;});
+test('multi-asset 1080x1920 encode mixes timed audio, original music, captions and diagrams',{skip:process.env.RUN_RENDER_TESTS!=='true',timeout:600000},async t=>{
+ const priorMode=process.env.SHORTSLOOP_MUSIC_MODE;process.env.SHORTSLOOP_MUSIC_MODE='original';t.after(()=>{if(priorMode===undefined)delete process.env.SHORTSLOOP_MUSIC_MODE;else process.env.SHORTSLOOP_MUSIC_MODE=priorMode;});
  const directory=mkdtempSync(join(tmpdir(),'shortloop-encode-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
  const assets=[];
  for(let i=0;i<2;i++){
@@ -22,7 +22,7 @@ test('multi-asset 1080x1920 encode mixes timed audio, captions and diagrams',{sk
  const p=await probe(r.videoFile);
  assert.equal(p.streams.find(x=>x.codec_type==='video').codec_name,'h264');assert.equal(r.manifest.assetCount,2);assert(r.manifest.explanationCount>0);assert(r.manifest.mechanicalQa.passed);assert(r.scenePlan.length>=8);assert(r.manifest.synthetic);assert.equal(calls,6);
  assert(r.manifest.speech.every(s=>s.sha256&&s.duration>0));assert.equal(r.manifest.captions.maxLines,2);
- assert.equal(r.manifest.musicEvidence.hasBackgroundMusic,false);assert.equal(r.manifest.musicEvidence.selectionStatus,'pending_native_selection');
+ assert.equal(r.manifest.musicEvidence.hasBackgroundMusic,true);assert.notEqual(r.manifest.musicEvidence.selectionStatus,'pending_native_selection');assert.equal(r.manifest.musicEvidence.externalSamples,false);
  assert.equal(r.manifest.cover.sha256,hash(readFileSync(join(directory,'media',v.id,'cover.jpg'))));
  // The persistent cache ties every sentence to text/model/voice/speed and its byte hash.
  const speech=JSON.parse(readFileSync(join(directory,'media',v.id,'speech-0.json')));assert.equal(speech.sha256,hash(readFileSync(join(directory,'media',v.id,'speech-0.wav'))));

@@ -1,3 +1,4 @@
+import {illustrationEvents} from './illustrations.mjs';
 // ASS vector drawings use libass already installed with FFmpeg: no browser/canvas dependency.
 export const assTime=x=>`${Math.floor(x/3600)}:${String(Math.floor(x/60)%60).padStart(2,'0')}:${(x%60).toFixed(2).padStart(5,'0')}`;
 export const assSafe=x=>String(x??'').replace(/[{}\\\r\n\u0000-\u001f]/g,' ');
@@ -24,7 +25,17 @@ function symbol(label,x,y,r,color) {
 }
 const palettes=[{panel:'F7EFE7',ink:'3E2815',accent:'4045ED',soft:'DFD0C1'},{panel:'48361E',ink:'FFFFFF',accent:'60D8FF',soft:'6A5135'},{panel:'E0F4F9',ink:'342A19',accent:'9A5835',soft:'B9DEEA'}];
 export const sceneBackground=variant=>['0xe7eff7','0x182b3b','0xf9f4e0'][(variant||0)%3];
+function animateGraphics(out,scene) {
+ if(scene.effect==='pan')return out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>`\\move(${Number(x)-12},${y},${Number(x)+12},${y})`);
+ if(scene.effect==='zoom')return out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>{
+  const from=.97,to=1.025,cx=530,cy=840,ms=Math.max(1,Math.round((scene.end-scene.start)*1000));
+  return `\\move(${(cx+(Number(x)-cx)*from).toFixed(1)},${(cy+(Number(y)-cy)*from).toFixed(1)},${(cx+(Number(x)-cx)*to).toFixed(1)},${(cy+(Number(y)-cy)*to).toFixed(1)})\\fscx97\\fscy97\\t(0,${ms},\\fscx102.5\\fscy102.5)`;
+ });
+ return out;
+}
 export function scienceCardEvents(scene) {
+ const illustrated=illustrationEvents(scene,{event,vector,rect,circle,wrapLabel});
+ if(illustrated!==null)return animateGraphics(illustrated,scene);
  const {start:a,end:b,diagramSpec:d}=scene,p=palettes[(scene.variant||0)%3],labels=d?.labels||scene.labels||[],n=labels.length,type=d?.type||'concept';
  const active=Math.max(0,(scene.activeStep??scene.segmentIndex??0)%Math.max(1,n));
  const layout=scene.layout||['overview','focus','timeline'][(scene.variant||0)%3];
@@ -98,18 +109,13 @@ export function scienceCardEvents(scene) {
  }
  if(d?.caption&&!scene.hook)out+=text(d.caption,530,1194,27);
  // A visible progressive reveal and small pan keep motion inside the safe card area.
- if(scene.effect==='pan')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>`\\move(${Number(x)-12},${y},${Number(x)+12},${y})`);
- if(scene.effect==='zoom')out=out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>{
-  const from=.94,to=1.045,cx=530,cy=840,ms=Math.max(1,Math.round((b-a)*1000));
-  return `\\move(${(cx+(Number(x)-cx)*from).toFixed(1)},${(cy+(Number(y)-cy)*from).toFixed(1)},${(cx+(Number(x)-cx)*to).toFixed(1)},${(cy+(Number(y)-cy)*to).toFixed(1)})\\fscx94\\fscy94\\t(0,${ms},\\fscx104.5\\fscy104.5)`;
- });
- return out;
+ return animateGraphics(out,scene);
 }
 export function sceneOverlayEvents(scene) {
  const {start:a,end:b}=scene;
  let out=scene.assetId?'':scienceCardEvents(scene);
  // Owner preference: large red headline with a white outline, separate from captions.
- if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?104:72}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?6:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?11:13)}`,3);
+ if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?9:12)}`,3);
  if(scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28}参考映像`,3);
  if(['slow','replay'].includes(scene.effect)&&scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,455)}${scene.effect==='slow'?'SLOW ×0.72':'REPLAY'}`,3);
  if(scene.callout)out+=event(a+.25,Math.min(b,a+2.8),'Label',`{\\an8\\move(525,1280,525,1258,0,180)\\fs39\\1c&H60D8FF&\\bord3\\fad(80,80)}${wrapLabel(scene.callout,18)}`,3);
