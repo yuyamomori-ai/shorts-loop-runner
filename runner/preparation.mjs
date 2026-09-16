@@ -22,7 +22,7 @@ export function startPreparation(engine,{env=process.env,onSettled=()=>{}}={}) {
  if(engine.running||lease?.expires>Date.now())return true;
  try{revisePreparedNarration(store,id,request,env.SHORTSLOOP_PREPARE_SCRIPT?JSON.parse(env.SHORTSLOOP_PREPARE_SCRIPT):null);}catch(e){store.update(s=>{s.productionPreparation={requestId:request,videoId:id,status:'failed',error:e.message,attempts:0};});console.error('Narration revision stopped:',e.message);return true;}
  store.update(s=>{s.productionPreparation={requestId:request,videoId:id,status:'running',startedAt:now(),attempts:same?(prior.attempts||0)+1:1};});
- engine.job('render',{id}).then(()=>store.update(s=>{s.productionPreparation.status='ready';s.productionPreparation.finishedAt=now();})).catch(e=>{
+ engine.job('render',{id}).then(()=>store.update(s=>{s.productionPreparation.status='ready';s.productionPreparation.finishedAt=now();if(env.SHORTSLOOP_MUSIC_MODE==='shorts-library'&&!s.automation?.userPaused){s.automation??={};s.automation.phase='waiting';s.automation.reason='品質確認済みです。YouTubeアプリで希望曲を追加して公開できます。';}})).catch(e=>{
   store.update(s=>{s.productionPreparation.status=e.code==='PIPELINE_BUSY'?'waiting':'failed';s.productionPreparation.errorCode=e.code||null;s.productionPreparation.error=e.message;if(e.code==='PIPELINE_BUSY')s.productionPreparation.attempts--;});
   console.error('Production preparation stopped:',e.message);
  }).finally(onSettled);
