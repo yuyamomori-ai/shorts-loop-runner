@@ -42,7 +42,7 @@ export async function validateMedia(file){
  assert(!/freeze_start:/.test(r.err),'長い静止画面を検出したため投稿を保留します。');
  return {passed:true,decoded:true,noBlackFrames:true,noLongFreeze:true,audioStream:true,...levels,duration};
 }
-export async function renderVideo(v,{directory,ai,preview=false,lightweight=false,englishTest=false,asset=null,assets=[],repair=0,retainAudio=false}={}){
+export async function renderVideo(v,{directory,ai,preview=false,lightweight=false,englishTest=false,asset=null,assets=[],repair=0,repairIssues=[],retainAudio=false}={}){
  assert(/^[a-zA-Z0-9-]{1,80}$/.test(v.id),'動画IDが不正です。');
  assert(!lightweight||preview,'軽量プレビューは投稿用に使えません。');
  assert(lightweight||ai?.key||process.env.VOICEVOX_URL,'投稿用動画にはAIナレーションが必要です。');
@@ -75,7 +75,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  assert(cursor>=20&&cursor<=60,`実際の音声尺が${cursor.toFixed(1)}秒です。20〜60秒に収まる台本に修正してください。`);
  const allAssets=[...new Map([...(asset?[asset]:[]),...assets].map(a=>[a.id,a])).values()];
  for(const a of allAssets)assert(assetReady(a)&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'使用素材の権利・ファイル整合性を確認できません。');
- const scenes=buildScenePlan(v,segments,allAssets,{repair}),caption=captionEvents(segments,{size:repair?48:v.captionStyle==='bold'?55:52});
+ const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues}),caption=captionEvents(segments,{size:repair?48:v.captionStyle==='bold'?55:52});
  const features=sceneFeatures(scenes,cursor,caption.totalChars);
  assert(features.meaningfulChanges>=minimumScenes(cursor)-1,'視覚変化が不足しています。');
  let ass=assHeader(font,caption.size)+caption.events;
@@ -125,7 +125,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  const coverFile=resolve(dir,'cover.jpg');await run('ffmpeg',['-y','-ss','0.8','-i',out,'-frames:v','1','-q:v','3',coverFile],30000);
  const cover={file:'cover.jpg',sha256:hash(readFileSync(coverFile)),frameTime:0.8,width:1080,height:1920,style:'large-red-white-outline'};
  const used=allAssets.filter(a=>scenes.some(s=>s.assetId===a.id));
- const manifest={cover,synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:'Original procedural composition generated locally; no third-party music',visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
+ const manifest={cover,synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:'Original procedural composition generated locally; no third-party music',visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom,timeline:caption.timeline,independentOfSceneCuts:true},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
  assert(!requiresExplanation(v)||manifest.explanationCount>0,'説明図がないため投稿を保留します。');
  writeFileSync(resolve(dir,'manifest.json'),JSON.stringify(manifest,null,2));
  if(!retainAudio)cleanRenderIntermediates(directory,v.id);

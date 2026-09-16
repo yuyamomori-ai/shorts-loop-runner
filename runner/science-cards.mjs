@@ -33,14 +33,23 @@ export function scienceCardEvents(scene) {
  const shape=(path,color=p.accent,from=a)=>event(from,b,'Label',vector(path,color),0);
  const icon=(str,x,y,r,from=a)=>event(from,b,'Label',symbol(str,x,y,r,p.accent),1);
  const arrow=(x,y,vertical=false)=>shape(vertical?`m ${x-7} ${y-23} l ${x+7} ${y-23} ${x+7} ${y+3} ${x+21} ${y+3} ${x} ${y+28} ${x-21} ${y+3} ${x-7} ${y+3}`:`m ${x-25} ${y-7} l ${x+4} ${y-7} ${x+4} ${y-22} ${x+30} ${y} ${x+4} ${y+22} ${x+4} ${y+7} ${x-25} ${y+7}`);
- if(layout==='focus'&&!scene.hook) {
+ if(scene.hook&&/記憶|誤情報|心理|覚|思い出|警告/.test(scene.overlay+labels.join(''))) {
+  // A generic person and phone are illustrative icons, not a depiction of study participants.
+  out+=shape(circle(337,686,98),p.accent);
+  out+=shape('m 153 1064 b 156 820 516 820 521 1064',p.accent);
+  out+=shape(circle(303,676,8),p.panel)+shape(circle(368,676,8),p.panel);
+  out+=shape(circle(337,734,20),p.panel);
+  out+=shape(rect(600,669,202,369),p.ink)+shape(rect(613,696,176,291),p.panel);
+  out+=text('?',702,825,138,p.accent,a+.12);
+  out+=text('人物・画面はイメージ',530,1150,30);
+ }else if(layout==='focus'&&!scene.hook) {
   // A close-up keeps the complete relationship visible in a small context strip.
   out+=shape(circle(530,732,137),p.soft)+icon(labels[active],530,710,72);
   out+=text(labels[active],530,950,66);
   const w=800/Math.max(1,n);
   labels.forEach((label,i)=>{
    const x=130+w*(i+.5);out+=shape(rect(x-w/2+8,1072,w-16,85),i===active?p.accent:p.soft);
-   out+=text(label,x,1115,n===3?27:33,i===active?'FFFFFF':p.ink,a,w-30);
+   out+=text(label,x,1115,n===3?27:33,i===active?((scene.variant||0)%3===1?'342A19':'FFFFFF'):p.ink,a,w-30);
    if(type==='process'&&i<n-1)out+=arrow(x+w/2,1040);
   });
  }else if(type==='process'&&layout==='overview') {
@@ -91,21 +100,25 @@ export function sceneOverlayEvents(scene) {
  if(scene.callout)out+=event(a+.25,Math.min(b,a+2.8),'Label',`{\\an8\\move(525,1280,525,1258,0,180)\\fs39\\1c&H60D8FF&\\bord3\\fad(80,80)}${wrapLabel(scene.callout,18)}`,3);
  return out;
 }
+export function captionChunks(text) {
+ const chars=Array.from(assSafe(text)),cards=[];
+ while(chars.length){let end=Math.min(26,chars.length);if(chars.length>26){for(let i=end-1;i>=11;i--)if(/[。！？、：]/.test(chars[i])){end=i+1;break;}if(chars.length-end<6)end=chars.length-6;}cards.push(chars.splice(0,end).join(''));}
+ return cards;
+}
 export function captionEvents(segments,{size=52}={}) {
- let out='',minSeconds=Infinity,totalChars=0;
+ let out='',minSeconds=Infinity,totalChars=0;const timeline=[];
  for(const s of segments) {
-  const chars=Array.from(assSafe(s.text)),duration=s.end-s.start;
-  const n=Math.ceil(chars.length/26),length=Math.ceil(chars.length/n);
-  const cards=[];while(chars.length)cards.push(chars.splice(0,length).join(''));
+  const duration=s.end-s.start,cards=captionChunks(s.text);
   for(let i=0;i<cards.length;i++) {
    const a=s.start+duration*i/cards.length,b=s.start+duration*(i+1)/cards.length;
    if(b-a<.95||Array.from(cards[i]).length/(b-a)>16)throw Error('字幕を読む時間が不足しています。台本を短くしてください。');
    minSeconds=Math.min(minSeconds,b-a);totalChars+=Array.from(cards[i]).length;
+   timeline.push({start:a,end:b,text:cards[i]});
    let text=wrapLabel(cards[i],13);
    const keyword=s.overlay&&Array.from(s.overlay).length<=8?assSafe(s.overlay):null;
    if(keyword&&text.includes(keyword))text=text.replace(keyword,`{\\1c&H7AE6AA&}${keyword}{\\1c&HFFFFFF&}`);
    out+=event(a,b,'Caption',`{\\an2\\pos(522,1490)\\fs${size}\\fad(55,55)}${text}`,5);
   }
  }
- return {events:out,minSeconds,totalChars,size,maxLines:2,bottom:1490};
+ return {events:out,minSeconds,totalChars,size,maxLines:2,bottom:1490,timeline};
 }

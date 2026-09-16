@@ -3,7 +3,7 @@ import {assetReady} from '../lib/rights.mjs';
 import {assert} from '../lib/core.mjs';
 
 // Use measured speech boundaries, not the model's guessed running time.
-export function buildScenePlan(v,segments,assets=[],{repair=0}={}) {
+export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[]}={}) {
  assert(segments.length>0,'台本がありません。');
  const duration=segments.at(-1).end;
  assert(duration>=20&&duration<=60,'動画尺は20〜60秒が必要です。');
@@ -12,7 +12,8 @@ export function buildScenePlan(v,segments,assets=[],{repair=0}={}) {
  for(let i=0;i<segments.length;i++) {
   const s=segments[i],visual=normalizeVisual(s),length=s.end-s.start;
   assert(length>0&&Number.isFinite(length),'音声の区間が不正です。');
-  const target=repair?2.6:Math.min(3.7,Number(v.sceneSeconds)||visual.durationHint);
+  const baseTarget=Math.min(3.7,Number(v.sceneSeconds)||visual.durationHint);
+  const target=repair?(repairIssues.includes('tempo')?3.7:Math.min(3,baseTarget)):baseTarget;
   const count=Math.max(1,Math.ceil(length/target));
   const candidates=[s.assetId,...(s.assetIds||[]),...(v.segmentAssets?.[i]||[])].filter(Boolean);
   if(!candidates.length&&v.assetId)candidates.push(v.assetId); // Legacy TYPE B.

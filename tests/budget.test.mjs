@@ -8,6 +8,7 @@ import {Store} from '../runner/store.mjs';
 import {configureConnections} from '../runner/vault.mjs';
 import {OpenAI,apiError} from '../runner/providers.mjs';
 import {Engine} from '../runner/engine.mjs';
+import {VISUAL_REVIEW_SCHEMA} from '../lib/visual.mjs';
 import {reserveSpend,settleSpend,spendingSummary,budgetPolicy,nextBudgetMonth} from '../runner/budget.mjs';
 const textRequest={kind:'response',model:'gpt-5-mini'};
 const at='2026-09-08T12:00:00Z';
@@ -20,6 +21,13 @@ function setup(t,extra={}){
  return {store,dir,ai:new OpenAI(store)};
 }
 const response=(usage={input_tokens:1000,output_tokens:1000},extra={})=>Response.json({id:'response-test',status:'completed',usage,output:[{type:'message',content:[{type:'output_text',text:'{"ok":true}'}]}],...extra});
+test('visual review uses strict issue enums within the same bounded paid request',async t=>{
+ const {ai,store}=setup(t);let body;
+ t.mock.method(globalThis,'fetch',async(u,o)=>{body=JSON.parse(o.body);return response();});
+ await ai.response('review',{schema:VISUAL_REVIEW_SCHEMA});
+ assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);assert.equal(body.text.format.schema.additionalProperties,false);
+ assert(body.text.format.schema.properties.issues.items.enum.includes('rights'));assert.equal(store.read().usage.aiCalls,1);assert.equal(body.max_output_tokens,7000);
+});
 
 test('default target preserves hosting reserve; config cannot raise total or lower FX allowance',()=>{
  assert.equal(budgetPolicy({}).aiUsd,30);assert.equal(budgetPolicy({}).nonAiReserveJpy,4000);

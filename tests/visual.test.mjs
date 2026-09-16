@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {normalizeVisual,visualPublicationIssues,visualReviewPass,repairableVisualReview,normalizeVisualReview,minimumScenes,visualClaims} from '../lib/visual.mjs';
 import {initialState,plan,migrateState,digestable,blockers} from '../lib/core.mjs';
 import {buildScenePlan,sceneFeatures} from '../runner/visual-plan.mjs';
-import {captionEvents,scienceCardEvents} from '../runner/science-cards.mjs';
+import {captionEvents,captionChunks,scienceCardEvents} from '../runner/science-cards.mjs';
 import {renderVideo} from '../runner/render.mjs';
 import {enrichStrategy,chooseAllocation} from '../lib/growth.mjs';
 import {readyVisual} from './fixtures/quality.mjs';
@@ -16,6 +16,17 @@ test('missing stock becomes sourced diagrams; explicitly missing assets are reje
 test('science without an explanatory diagram fails closed',()=>{const v=video();v.segments=v.segments.map(s=>({...s,diagramSpec:undefined}));assert.throws(()=>buildScenePlan(v,v.segments),/説明図/);});
 test('AI narration is mandatory and lightweight mode never means production',async()=>{const prior=process.env.VOICEVOX_URL;delete process.env.VOICEVOX_URL;try{await assert.rejects(renderVideo(video(),{directory:'/tmp/no-voice',ai:null}),/ナレーション/);await assert.rejects(renderVideo(video(),{directory:'/tmp/no-voice',preview:false,lightweight:true}),/プレビュー/);}finally{if(prior)process.env.VOICEVOX_URL=prior;}});
 test('captions stay short below visuals and unsafe ASS commands are stripped',()=>{const v=video(),c=captionEvents(v.segments);assert.equal(c.maxLines,2);assert.equal(c.bottom,1490);assert(c.minSeconds>=.95);const s=buildScenePlan(v,v.segments)[0];s.diagramSpec.labels[0]='{\\pos(0,0)}悪意';assert(!scienceCardEvents(s).includes('{\\pos(0,0)}悪意'));});
+test('caption timeline preserves the sentence across shorter independent scene cuts',()=>{
+ const text='覚えていたはずなのに？実験では、あとから聞いた情報が答えに入り込むことがありました。';
+ const chunks=captionChunks(text);assert.equal(chunks.join(''),text);assert(chunks.every(x=>Array.from(x).length<=26));
+ const captions=captionEvents([{text,start:0,end:12}]);assert.equal(captions.timeline[0].start,0);assert.equal(captions.timeline.at(-1).end,12);
+ assert.equal(captions.timeline.map(x=>x.text).join(''),text);assert(captions.timeline.every((x,i)=>!i||x.start===captions.timeline[i-1].end));
+ assert(captions.timeline.some(x=>x.start<3&&x.end>3));
+});
+test('tempo repair does not accelerate cuts when QA requests more reading time',()=>{
+ const v=video(36),base=buildScenePlan(v,v.segments),fixed=buildScenePlan(v,v.segments,[],{repair:1,repairIssues:['tempo']});
+ assert(fixed.length<=base.length);assert(fixed.length>=minimumScenes(36));assert.equal(fixed.at(-1).end,36);assert(fixed.every(x=>x.duration<=4));
+});
 test('visual review must be structurally valid and cannot repair facts or rights by editing',()=>{const q={passed:true,visualVariety:80,visualRelevance:80,explanationClarity:80,hookStrength:80,captionReadability:80,safetyConcern:false,factConcern:false,copyrightConcern:false,issues:[]};assert(visualReviewPass(q));assert(!visualReviewPass({...q,hookStrength:undefined}));assert(!repairableVisualReview({...q,factConcern:true,issues:['fact']}));assert(repairableVisualReview({...q,passed:false,issues:['captions','scene_variety']}));});
 test('legacy pipe-delimited visual issues are repairable but unknown/factual issues remain a stop',()=>{
  const q={passed:false,factConcern:false,safetyConcern:false,copyrightConcern:false,issues:['scene_variety|hook|tempo']};

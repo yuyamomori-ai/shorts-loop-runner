@@ -2,7 +2,7 @@ import {spendingSummary,nextBudgetMonth} from './budget.mjs';
 import {groundPlan,sourceUrlKey} from './planning.mjs';
 import {referencesForNextVideo,benchmarkPrompt,normalizeBenchmarkTrial,purgeBenchmarks} from './benchmarks.mjs';
 import {collectGeneratedMedia,cleanRenderIntermediates} from './storage.mjs';
-import {VISUAL_VERSION,VISUAL_SCHEMA,CREATIVE_BRIEF,normalizeVisual,requiresExplanation,visualClaims,usedAssetIds,visualReviewPass,repairableVisualReview,normalizeVisualReview} from '../lib/visual.mjs';
+import {VISUAL_VERSION,VISUAL_SCHEMA,CREATIVE_BRIEF,VISUAL_REVIEW_SCHEMA,normalizeVisual,requiresExplanation,visualClaims,usedAssetIds,visualReviewPass,repairableVisualReview,normalizeVisualReview} from '../lib/visual.mjs';
 import {initializeAutomation,automationReadiness,startWhenReady,pauseAutomation,requestPublicAutopilot} from '../lib/automation.mjs';
 import {googleClient} from './vault.mjs';
 import {enrichStrategy,chooseAllocation,slotsForDay,dayOf} from '../lib/growth.mjs';
@@ -152,7 +152,7 @@ export class Engine {
   return this.store.read().live.assets.filter(a=>ids.includes(a.id));
  }
  async reviewVisual(v,result){
-  const q=await this.ai.response(`日本語YouTube Shortsの完成フレームを時系列で審査。最初の2枚は0.25秒・1.2秒時点、残りは各シーン中のサンプルです。サンプルの時刻をシーン長や字幕の表示時間と混同しない。実測のscenePlanとmanifest.captions.minSecondsで尺を評価し、静止画から動きや発話速度は断定しない。字幕だけの単色動画は不合格。画面の単調さ、台本との関連、図の意味、字幕の重なりと可読性、冒頭、テンポ、オチを厳しく確認。模式図の形自体は論文図ではないが、矢印・数値・因果に誤りがあればfactConcernをtrue。静止フレームから音声品質や動画全体を確認済みとは言わない。内部評価でありYouTube公式スコアではない。JSON {"passed":boolean,"visualVariety":0..100,"visualRelevance":0..100,"explanationClarity":0..100,"hookStrength":0..100,"captionReadability":0..100,"factConcern":boolean,"safetyConcern":boolean,"copyrightConcern":boolean,"issues":[],"reason":"日本語","fix":"具体的な編集修正"}。issuesは不合格理由をscene_variety,captions,explanation,hook,tempo,fact,safety,rightsから個別の文字列で列挙し、合格なら空配列。全スコア65以上・懸念なしでのみ合格。台本・図解=${JSON.stringify(visualClaims(v))}。実際の編集記録=${JSON.stringify(result.manifest)}。シーン=${JSON.stringify(result.scenePlan)}`,{images:result.frameFiles.map(f=>'data:image/jpeg;base64,'+readFileSync(f).toString('base64'))});
+  const q=await this.ai.response(`日本語YouTube Shortsの完成フレームを時系列で審査。最初の2枚は0.25秒・1.2秒時点、残りは各シーン中のサンプルです。サンプルの時刻をシーン長や字幕の表示時間と混同しない。実測のscenePlanとmanifest.captions.minSecondsで尺を評価し、静止画から動きや発話速度は断定しない。字幕は映像カットと独立したタイムラインで、カットをまたいでも途切れずに表示される。captions.minSecondsは実際の最短表示時間で、各シーンが満たすべき時間ではない。各字幕のstart/endを確認し、シーン長との大小だけで不合格にしない。外部素材ゼロ自体は不合格理由ではないが、図解にも十分な変化と引き込みが必要。visualQueryは候補の検索語、実際の映像設計はscenePlan。字幕だけの単色動画は不合格。画面の単調さ、台本との関連、図の意味、字幕の重なりと可読性、冒頭、テンポ、オチを厳しく確認。模式図の形自体は論文図ではないが、矢印・数値・因果に誤りがあればfactConcernをtrue。静止フレームから音声品質や動画全体を確認済みとは言わない。内部評価でありYouTube公式スコアではない。JSON {"passed":boolean,"visualVariety":0..100,"visualRelevance":0..100,"explanationClarity":0..100,"hookStrength":0..100,"captionReadability":0..100,"factConcern":boolean,"safetyConcern":boolean,"copyrightConcern":boolean,"issues":[],"reason":"日本語","fix":"具体的な編集修正"}。issuesは不合格理由をscene_variety,captions,explanation,hook,tempo,fact,safety,rightsから個別の文字列で列挙し、合格なら空配列。全スコア65以上・懸念なしでのみ合格。台本・図解=${JSON.stringify(visualClaims(v))}。実際の編集記録=${JSON.stringify(result.manifest)}。シーン=${JSON.stringify(result.scenePlan)}`,{schema:VISUAL_REVIEW_SCHEMA,images:result.frameFiles.map(f=>'data:image/jpeg;base64,'+readFileSync(f).toString('base64'))});
   const review=normalizeVisualReview(q.value);return {...review,passed:visualReviewPass(review),checkedAt:now(),method:'AIの代表フレーム内部評価 + 全フレームの機械検査'};
  }
  async verify(id){
@@ -166,12 +166,26 @@ export class Engine {
   this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.qa.facts=ok?'passed':'failed';x.sourceEvidence=evidence;x.factCheck=q;x.verifiedContentHash=ok?hash(JSON.stringify(visualClaims(v))):null;x.sources=x.sources.map(src=>({...src,status:ok?'verified':'unverified',checkedAt:now()}));if(!ok){x.status='blocked';x.risk='出典と台本の照合で未確認の情報があります。';}log(s.live,'fact',`「${v.title}」の根拠照合: ${ok?'合格':'停止'}`);});
   assert(ok,'事実確認が完了しなかったため、自動運転を停止しました。');
  }
+ async polishPresentation(id){
+  const v=this.store.read().live.videos.find(v=>v.id===id);
+  assert(v&&!v.youtubeId&&!v.uploadIntent&&!v.risk&&v.qa.facts==='passed'&&(v.presentationRepairAttempts||0)<1,'台本の再編集条件を満たしていません。');
+  this.store.update(s=>{s.live.videos.find(v=>v.id===id).presentationRepairAttempts=(v.presentationRepairAttempts||0)+1;});
+  this.progress('presentation-repair',id);
+  const q=await this.ai.response(`事実確認済みの台本を一度だけ、親しみやすい科学Shortsに再編集する。出典と事実を増やさず、話題を一つに絞る。論文調の前置きや専門語を減らし、短いツッコミを一つ読み上げ本文へ含める。6〜8セグメント、全体130〜185文字を目標に必ず220文字以内。最初のhookは6〜10文字で必ず12文字以内。残りは短い話し言葉。研究の条件・限界は短く必ず残す。${CREATIVE_BRIEF} ${VISUAL_SCHEMA}。出力JSON {"segments":[{"text":"文","role":"hook|body|answer|cta","sourceIds":["s1"],...visual fields}]}。使用できる出典IDは元の出典だけ。元台本=${JSON.stringify(v.segments)}。取得済み資料=${JSON.stringify(v.sourceEvidence||v.sources)}`);
+  const segments=q.value.segments,sourceIds=new Set(v.sources.map(s=>s.id));if(v.assetId)sourceIds.add('asset');
+  assert(Array.isArray(segments)&&segments.length>=5&&segments.length<=8&&segments.every(s=>typeof s.text==='string'&&s.text.length>0&&s.text.length<=100&&Array.isArray(s.sourceIds)&&s.sourceIds.every(id=>sourceIds.has(id))),'再編集した台本の形式・根拠IDが不正です。');
+  assert(segments[0].role==='hook'&&Array.from(segments[0].text).length<=12&&segments.reduce((n,s)=>n+Array.from(s.text).length,0)<=220,'再編集した台本が長すぎます。');
+  const normalized=segments.map(s=>({...s,...normalizeVisual(s)}));
+  this.store.update(s=>{const x=s.live.videos.find(v=>v.id===id);x.segments=normalized;x.revision++;x.approvedRevision=null;delete x.approvedDigest;x.qa.facts='pending';delete x.mediaManifest;delete x.videoFile;delete x.segmentAssets;x.assetIds=x.assetId?[x.assetId]:[];});
+  await this.verify(id);
+ }
  async render(id,preview=false,repaired=false,lightweight=false){
   this.activeVideoId=id;this.ai.videoId=id;
   this.progress('rendering',id);
   let v=this.store.read().live.videos.find(x=>x.id===id);assert(v&&!v.synthetic,'対象動画がありません。');
   assert(!v.uploadIntent&&!v.youtubeId&&!['published','uploading','scheduled'].includes(v.status),'送信済み動画は再生成できません。');
   if(!lightweight){await this.ensureVisualPlan(id);v=this.store.read().live.videos.find(x=>x.id===id);if(v.qa.facts!=='passed'||v.verifiedContentHash!==hash(JSON.stringify(visualClaims(v))))await this.verify(id);}
+  if(!preview&&!lightweight&&(v.presentationRepairAttempts||0)<1&&v.segments.reduce((n,s)=>n+Array.from(s.text).length,0)>240)await this.polishPresentation(id);
   v=this.store.read().live.videos.find(x=>x.id===id);assert(!v.risk,'確認待ちのリスクがあります。');
   this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.status='rendering';delete x.error;x.approvedRevision=null;delete x.approvedDigest;x.revision++;x.qa.technical='pending';x.qa.visual='pending';});
   try{
@@ -181,7 +195,7 @@ export class Engine {
    let result,visualQa,originality=null;
    const limit=lightweight?0:Math.max(0,Math.min(2,Number(process.env.SHORTSLOOP_VISUAL_REPAIRS??2)));
    for(let attempt=0;attempt<=limit;attempt++){
-    result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,repair:attempt,retainAudio:true});
+    result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,repair:attempt,repairIssues:visualQa?.issues||[],retainAudio:true});
     this.progress('render-encoded',id,{attempt,duration:result.duration,scenes:result.manifest.sceneCount,diagrams:result.manifest.explanationCount,narration:result.manifest.narrationVerified,mechanicalQa:result.manifest.mechanicalQa});
     visualQa=lightweight?{passed:false,reason:'音声なしの軽量プレビュー'}:await this.reviewVisual(v,result);
     this.progress('visual-review',id,{review:visualQa});
