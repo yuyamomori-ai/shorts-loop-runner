@@ -18,6 +18,10 @@ test('mature performance pacing can reduce volume but cannot exceed the monetary
  s.live.memory.paceHistory=[{to:100}];assert(productionPace(s,{at,env}).target<100);
  s.settings.derivedApproved=false;s.live.memory.paceHistory=[{to:1}];assert(productionPace(s,{at,env}).target>1);
 });
+test('old failed reviews and validation records remain unpublished without blocking new production',()=>{
+ const s=make();s.live.videos=[{id:'old-review',status:'review',qa:{facts:'failed'},createdAt:'2026-08-01'},{id:'validation',status:'draft',validationOnly:true},{id:'private-work',status:'approved',privacy:'private'}];s.settings.privacy='public';
+ const p=productionPace(s,{at,env});assert(p.canGenerate);assert.equal(p.heldReviews,1);assert.deepEqual(p.pending,[]);assert.equal(s.live.videos[0].qa.facts,'failed');assert.equal(s.live.videos[0].status,'review');
+});
 test('failed production is charged and reserved unknown outcomes cannot restart spending',()=>{
  const s=make();s.spendGuard={version:1,months:{'2026-09':{legacyUsd:0,legacyUnknown:false,requests:[{id:'unresolved',at,kind:'response',reservedUsd:30,bookedUsd:30,status:'reserved'}]}}};
  const p=productionPace(s,{at,env});assert.equal(p.target,0);assert.equal(p.canGenerate,false);assert.equal(p.reason,'monthly_budget');
@@ -25,7 +29,7 @@ test('failed production is charged and reserved unknown outcomes cannot restart 
 test('daily expenditure, active queue and cooldown independently prevent runaway production',()=>{
  const s=make();let p=productionPace(s,{at,env});recordProductionAttempt(s,p,at);assert.equal(productionPace(s,{at,env}).reason,'cooldown');
  assert(productionPace(s,{at:'2026-09-16T03:06:00Z',env}).canGenerate);
- s.live.videos.push({id:'active',status:'review',createdAt:at});assert.equal(productionPace(s,{at,env}).reason,'queue_active');
+ s.live.videos.push({id:'active',status:'draft',createdAt:at});assert.equal(productionPace(s,{at,env}).reason,'queue_active');
  s.live.videos=[];s.spendGuard={version:1,months:{'2026-09':{legacyUsd:0,legacyUnknown:false,requests:[{id:'spent',at,kind:'speech',reservedUsd:3,bookedUsd:3,status:'conservative'}]}}};assert.equal(productionPace(s,{at,env}).reason,'daily_budget');
 });
 test('the attempt limit survives repeated failed topics but resets the next day',()=>{

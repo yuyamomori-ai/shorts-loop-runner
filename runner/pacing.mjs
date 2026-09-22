@@ -1,5 +1,6 @@
 import {spendingSummary,monthOf} from './budget.mjs';
 import {dayOf} from '../lib/growth.mjs';
+import {blockers} from '../lib/core.mjs';
 
 const DAY=86400000;
 const finite=x=>Number.isFinite(x)&&x>=0;
@@ -24,12 +25,16 @@ export function productionPace(state,{at=new Date().toISOString(),env=process.en
  const target=budget.blocked?0:Math.max(0,Math.min(Math.floor(budget.remainingJpy/costPerVideoJpy),Math.max(1,Math.floor(dailyAllowanceJpy/costPerVideoJpy)),callTarget,Math.floor(16*60/minSpacing),Number.isInteger(learnedLimit)&&learnedLimit>0?learnedLimit:Infinity));
  const today=state.live.videos.filter(v=>!v.synthetic&&!v.validationOnly&&Number.isFinite(Date.parse(v.createdAt))&&dayOf(v.createdAt)===day);
  const made=today.filter(v=>!['blocked','rejected'].includes(v.status)).length;
- const active=state.live.videos.some(v=>['draft','rendering','review','approved','uploading'].includes(v.status));
+ // A legacy review that cannot pass publication must not stall every future
+ // proposal. Keep it unchanged for inspection; only a publishable review is work
+ // the automatic approval stage can actually advance.
+ const pending=state.live.videos.filter(v=>!v.synthetic&&!v.validationOnly&&(!v.privacy||v.privacy===state.settings.privacy||v.uploadIntent||v.uploadSession)&&(['draft','rendering','approved','uploading'].includes(v.status)||v.status==='review'&&!blockers(v,true).length));
+ const active=pending.length>0;
  const previous=state.productionLoop?.day===day?state.productionLoop:null;
  const attempts=previous?.attempts||0,cooldown=Date.parse(state.productionLoop?.lastAttemptAt||'')+5*60000;
  const due=Number.isFinite(cooldown)&&cooldown>time;
  const reason=budget.blocked||!target?'monthly_budget':todaySpent+costPerVideoJpy>dailyAllowanceJpy?'daily_budget':made>=target?'daily_target':attempts>=Math.max(3,target*3)?'attempt_limit':active?'queue_active':due?'cooldown':'ready';
- return {enabled:state.settings.budgetPacing===true,day,daysLeft,target,made,attempts,costPerVideoJpy,dailyAllowanceJpy,todaySpentJpy:Math.ceil(todaySpent),remainingJpy:budget.remainingJpy,canGenerate:reason==='ready',reason,nextAttemptAt:due?new Date(cooldown).toISOString():null,scope:'production-cost planning estimate; monthly transactional guard remains authoritative'};
+ return {enabled:state.settings.budgetPacing===true,day,daysLeft,target,made,attempts,costPerVideoJpy,dailyAllowanceJpy,todaySpentJpy:Math.ceil(todaySpent),remainingJpy:budget.remainingJpy,canGenerate:reason==='ready',reason,pending:pending.slice(0,8).map(v=>({id:v.id,status:v.status,privacy:v.privacy,plannedAt:v.plannedAt||v.publishAt||null})),heldReviews:state.live.videos.filter(v=>v.status==='review'&&blockers(v,true).length).length,nextAttemptAt:due?new Date(cooldown).toISOString():null,scope:'production-cost planning estimate; monthly transactional guard remains authoritative'};
 }
 export function applyProductionRequest(state,env=process.env) {
  const id=env.SHORTSLOOP_GROWTH_REQUEST;
