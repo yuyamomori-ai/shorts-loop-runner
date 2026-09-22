@@ -25,7 +25,7 @@ test('visual review uses strict issue enums within the same bounded paid request
  const {ai,store}=setup(t);let body;
  t.mock.method(globalThis,'fetch',async(u,o)=>{body=JSON.parse(o.body);return response();});
  await ai.response('review',{schema:VISUAL_REVIEW_SCHEMA,images:['data:image/jpeg;base64,AA=='],imageLabels:['Frame at 1.2s inside scene 0, from 0s to 3s']});
- assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);assert.equal(body.text.format.schema.additionalProperties,false);
+ assert.equal(body.reasoning,undefined);assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);assert.equal(body.text.format.schema.additionalProperties,false);
  assert(body.text.format.schema.properties.issues.items.enum.includes('rights'));assert.equal(store.read().usage.aiCalls,1);assert.equal(body.max_output_tokens,7000);
  assert.equal(body.input[1].content[1].type,'input_text');assert.equal(body.input[1].content[2].detail,'high');
 });
@@ -64,7 +64,7 @@ test('explicit request rejection releases dollars but never the daily attempt co
 test('actual text and bounded search usage is booked even when JSON output cannot be used',async t=>{
  const {store,ai}=setup(t);let sent;
  t.mock.method(globalThis,'fetch',async(u,o)=>{sent=JSON.parse(o.body);return response({input_tokens:10000,output_tokens:500},{status:'incomplete',output:[{type:'web_search_call'},{type:'web_search_call'}]});});
- await assert.rejects(ai.response('search',{search:true}));assert.equal(sent.max_tool_calls,4);assert.equal(sent.max_output_tokens,7000);assert.equal(sent.service_tier,'default');
+ await assert.rejects(ai.response('search',{search:true}));assert.equal(sent.reasoning.effort,'low');assert.equal(sent.max_tool_calls,4);assert.equal(sent.max_output_tokens,7000);assert.equal(sent.service_tier,'default');
  const entry=store.read().costLedger[0];assert.equal(entry.estimatedUsd,.0235);assert.equal(entry.searchCalls,2);assert.equal(entry.managedUsd,.0235);
 });
 test('TTS reserves a conservative allowance without pretending audio token cost was measured',async t=>{
