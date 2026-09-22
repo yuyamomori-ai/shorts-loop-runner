@@ -12,6 +12,12 @@ async function fixture(run){
  engine.progress=()=>{};engine.housekeep=()=>{};engine.youtube.connected=()=>false;
  try{await run(engine,store);}finally{store.close();rmSync(dir,{recursive:true,force:true});}
 }
+test('a malformed strategy plan is rejected without stopping subsequent production or forging QA',()=>fixture(async(engine,store)=>{
+ store.update(s=>{s.settings.paused=false;s.automation.phase='running';s.live.videos.push({id:'bad-plan',status:'draft',qa:{facts:'pending'}});});
+ engine.generate=async()=>{engine.activeVideoId='bad-plan';throw Error('実験・戦略条件と生成結果が一致しません。');};
+ await assert.rejects(engine.job('generate'));
+ const s=store.read();assert.equal(s.settings.paused,false);assert.equal(s.live.videos[0].status,'blocked');assert.equal(s.live.videos[0].qa.facts,'pending');
+}));
 test('budget pacing starts after the previous daily-plan latch and persists the attempt before calling AI',()=>fixture(async(engine,store)=>{
  store.update(s=>{s.settings.paused=false;s.settings.budgetPacing=true;s.settings.dailyAiCalls=60;s.lastPlanDay=dayOf(new Date().toISOString());});
  engine.ai.key='test-only';let calls=0;
