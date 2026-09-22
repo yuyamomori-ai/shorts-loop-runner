@@ -18,3 +18,9 @@ test('performance analysis needs actual completed equal windows and stays bounde
 test('new official reactions invalidate stale analysis, and missing observations never become zero',()=>{
  const m={views:100,likes:null,shares:null},fingerprint=performanceFingerprint(m);assert.notEqual(fingerprint,performanceFingerprint({...m,likes:1}));assert.notEqual(fingerprint,performanceFingerprint({...m,shares:0}));
 });
+test('failed factual checks teach what to avoid without becoming scientific evidence',()=>{
+ const s=initialState();s.settings.productionLearning=true;
+ s.live.videos=[{id:'failed',createdAt:'2026-09-23',qa:{facts:'failed'},factCheck:{highRisk:false,checks:[{supported:false,visualSupported:true,reason:'研究から個人への実践指示を導けない'}]}},{id:'unsafe',qa:{facts:'failed'},factCheck:{highRisk:true,checks:[]}}];
+ const b=editorialBrief(s);assert.equal(b.groundingLessons.length,1);assert(b.groundingLessons[0].basis.includes('never a source'));assert.equal(s.live.videos[0].qa.facts,'failed');
+ s.settings.productionLearning=false;assert.deepEqual(editorialBrief(s).groundingLessons,[]);
+});

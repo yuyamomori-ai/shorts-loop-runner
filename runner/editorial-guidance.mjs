@@ -17,7 +17,11 @@ export function editorialBrief(state) {
   .filter(v=>!v.synthetic&&v.visualQa&&!v.visualQa.factConcern&&!v.visualQa.copyrightConcern&&!v.visualQa.safetyConcern)
   .sort((a,b)=>Date.parse(b.visualQa.checkedAt||b.createdAt)-Date.parse(a.visualQa.checkedAt||a.createdAt))
   .slice(0,3).map(v=>({videoId:v.id,issues:v.visualQa.issues||[],fix:String(v.visualQa.fix||'').slice(0,700),basis:'our pre-publication visual QA; not audience performance'}));
- return {guidance:CREATOR_GUIDANCE,productionLessons:lessons,performanceLearning:state.settings.derivedApproved?'enabled_after_terms':'pending_additional_terms'};
+ const groundingLessons=state.settings.productionLearning!==true?[]:state.live.videos
+  .filter(v=>!v.synthetic&&v.qa?.facts==='failed'&&v.factCheck?.highRisk===false)
+  .sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,3)
+  .map(v=>({videoId:v.id,avoid:(v.factCheck.checks||[]).filter(c=>!c.supported||!c.visualSupported).slice(0,3).map(c=>String(c.reason||'').slice(0,300)),basis:'our failed evidence check; a warning, never a source or a verified claim'}));
+ return {guidance:CREATOR_GUIDANCE,productionLessons:lessons,groundingLessons,performanceLearning:state.settings.derivedApproved?'enabled_after_terms':'pending_additional_terms'};
 }
 export function editorialPrompt(state) {
  const b=editorialBrief(state);
