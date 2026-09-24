@@ -1,7 +1,8 @@
+import {Engine} from '../runner/engine.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sourceCandidates,sourcePayload,trustedSource} from '../runner/providers.mjs';
-import {factReviewPass,FACT_REVIEW_INSTRUCTIONS} from '../runner/fact-review.mjs';
+import {factReviewPass,FACT_REVIEW_INSTRUCTIONS,canRepairVisualFacts,UNVERIFIED_FACT_RISK} from '../runner/fact-review.mjs';
 import {initialState} from '../lib/core.mjs';
 import {initializeAutomation,pauseAutomation} from '../lib/automation.mjs';
 
@@ -40,4 +41,19 @@ test('malformed editorial drafts are rejected individually while rights and OAut
   const s=initialState();initializeAutomation(s,{enabled:true});pauseAutomation(s,reason);
   assert.equal(s.automation.phase,'attention');assert.equal(s.settings.paused,true);
  }
+});
+
+test('only a visual-only factual rejection can receive one correction followed by fresh fact verification',()=>{
+ const video={segments:[{text:'確認済みの主張',sourceIds:['s1'],diagramSpec:{type:'process',labels:['A','B'],sourceIds:['s1']}}],sources:[{id:'s1'}],risk:UNVERIFIED_FACT_RISK,qa:{facts:'failed'},factCheck:{allSupported:true,allVisualsSupported:false,highRisk:false,checks:[{index:0,claimType:'assertion',supported:true,visualSupported:false,sourceIds:['s1']}]}};
+ assert(canRepairVisualFacts(video));assert.equal(video.qa.facts,'failed');assert.equal(video.risk,UNVERIFIED_FACT_RISK);
+ for(const patch of [{risk:'copyright'},{uploadIntent:'unknown'},{youtubeId:'sent'},{visualFactRepairs:1},{qa:{assetRights:'failed'}}])assert(!canRepairVisualFacts({...video,...patch}));
+ for(const patch of [{allSupported:false},{highRisk:true},{checks:[{index:0,claimType:'assertion',supported:false,visualSupported:false,sourceIds:['s1']}]}])assert(!canRepairVisualFacts(video,{...video.factCheck,...patch}));
+});
+
+test('diagram correction cannot change narration or clear a factual hold before independent verification',async()=>{
+ const video={id:'fixture',revision:1,approvedRevision:1,approvedDigest:'old',verifiedContentHash:null,segments:[{text:'確認済みの主張',role:'body',sourceIds:['s1'],visualType:'diagram',diagramSpec:{type:'process',labels:['A','B'],sourceIds:['s1']}}],sources:[{id:'s1'}],sourceEvidence:[{id:'s1',text:'primary evidence'}],risk:UNVERIFIED_FACT_RISK,qa:{facts:'failed'},factCheck:{allSupported:true,allVisualsSupported:false,highRisk:false,checks:[{index:0,claimType:'assertion',supported:true,visualSupported:false,sourceIds:['s1']}]}};
+ const state={live:{videos:[video]}};let verified=false;
+ const context={store:{read:()=>state,update:fn=>fn(state)},progress:()=>{},ai:{response:async()=>({value:{visuals:[{index:0,text:'invented claim',visualType:'diagram',overlay:'比較',callout:'',diagramSpec:{type:'concept',labels:['A','B'],sourceIds:['s1']}}]}})},verify:async()=>{verified=true;throw Error('independent fact check rejected');}};
+ await assert.rejects(Engine.prototype.repairVisualFacts.call(context,'fixture'),/independent fact/);
+ assert(verified);assert.equal(video.segments[0].text,'確認済みの主張');assert.equal(video.risk,UNVERIFIED_FACT_RISK);assert.equal(video.qa.facts,'pending');assert.equal(video.visualFactRepairs,1);assert.equal(video.approvedRevision,null);assert.equal(video.approvedDigest,undefined);
 });

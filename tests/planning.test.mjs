@@ -54,3 +54,10 @@ test('explicit primary source hints still require retrieved evidence and indepen
  const result=await groundPlan(ai,candidate,{preferredUrls:[preferred,'https://evil.invalid/'],fetchSource:async u=>{seen.push(u);return evidence(u);}});
  assert.equal(seen[0],preferred);assert.equal(result.sourceEvidence[0].url,preferred);assert.equal(result.value.qa,undefined);
 });
+
+test('retrieval repair preserves assigned experiment metadata instead of model-invented labels',async()=>{
+ const ai={response:async()=>({value:{genre:'wrong',hook:'a sentence',structure:'wrong',risk:'none',segments:[]}})};
+ const strategy={genre:'科学',hook:'question',structure:'story'};
+ const r=await groundPlan(ai,candidate,{strategy,fetchSource:async u=>evidence(u)});
+ for(const [key,value]of Object.entries(strategy))assert.equal(r.value[key],value);
+});

@@ -1,3 +1,4 @@
+import {canRepairVisualFacts} from './fact-review.mjs';
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {Store} from './store.mjs';
@@ -41,7 +42,7 @@ function logAcceptanceFrames(base,runId,report){
 
 export function canRepairAcceptance(prior,v){
  if(!prior||prior.passed)return false;
- if(!v)return ['図解は同じセグメントの出典で裏付けてください。','企画の出典IDが登録された資料にありません。','台本の形式が不正です。','取得可能な一次資料が足りないため、根拠のない企画は制作しません。'].includes(prior.error);
+ if(!v)return ['図解は同じセグメントの出典で裏付けてください。','企画の出典IDが登録された資料にありません。','台本の形式が不正です。','取得可能な一次資料が足りないため、根拠のない企画は制作しません。','実験・戦略条件と生成結果が一致しません。'].includes(prior.error);
  return v.privacy==='private'&&!v.youtubeId&&!v.uploadIntent&&!v.uploadSession&&!v.risk&&v.qa?.facts==='passed'&&v.qa?.assetRights!=='failed'&&repairableVisualReview(v.visualQa);
 }
 // Isolated records, shared monetary/daily ledger, and no upload capability.
@@ -77,7 +78,7 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
    report.currentTest=spec.name;progress();let id=prior?.videoId;
    try{
     const existing=id&&store.read().live.videos.find(v=>v.id===id);
-    if(prior)assert(canRepairAcceptance(prior,existing),'受入テストの事実・権利・安全性の不合格は編集だけでは再試行しません。');
+    if(prior){if(canRepairVisualFacts(existing)){await engine.repairVisualFacts(id);}else assert(canRepairAcceptance(prior,existing),'受入テストの事実・権利・安全性の不合格は編集だけでは再試行しません。');}
     if(!existing){await engine.generate(1,'A',{...spec,skipReferences:true});id=store.read().live.videos[0].id;}
     await engine.render(id);
     const v=store.read().live.videos.find(v=>v.id===id),issues=blockers(v,true);

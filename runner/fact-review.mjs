@@ -11,3 +11,19 @@ export function factReviewPass(v,q){
   const c=rows[0];return c.supported===true&&c.visualSupported===true&&['assertion','non_assertive'].includes(c.claimType)&&Array.isArray(c.sourceIds)&&(c.claimType==='non_assertive'||c.sourceIds.length>0)&&c.sourceIds.every(id=>(segment.sourceIds||[]).includes(id)&&(v.sources.some(s=>s.id===id)||id==='asset'&&!!v.assetId));
  });
 }
+
+export const UNVERIFIED_FACT_RISK='出典と台本の照合で未確認の情報があります。';
+export function canRepairVisualFacts(v,q=v?.factCheck){
+ if(!v||v.youtubeId||v.uploadIntent||v.uploadSession||v.risk&&v.risk!==UNVERIFIED_FACT_RISK||(v.visualFactRepairs||0)>=1||v.qa?.assetRights==='failed'||v.visualQa?.safetyConcern||v.visualQa?.copyrightConcern)return false;
+ if(q?.allSupported!==true||q?.allVisualsSupported!==false||q?.highRisk!==false||!Array.isArray(q.checks)||q.checks.length!==v.segments.length)return false;
+ const registered=new Set(v.sources.map(s=>s.id));if(v.assetId)registered.add('asset');
+ let failed=0;
+ for(let index=0;index<v.segments.length;index++){
+  const rows=q.checks.filter(c=>c.index===index);if(rows.length!==1)return false;
+  const c=rows[0],s=v.segments[index];
+  if(c.supported!==true||!['assertion','non_assertive'].includes(c.claimType)||!Array.isArray(c.sourceIds)||c.sourceIds.some(id=>!registered.has(id))||c.claimType==='assertion'&&!c.sourceIds.length)return false;
+  if(c.visualSupported===false){if(!s.diagramSpec)return false;failed++;}
+  else if(c.visualSupported!==true)return false;
+ }
+ return failed>0;
+}
