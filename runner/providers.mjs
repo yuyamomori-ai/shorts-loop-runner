@@ -23,24 +23,50 @@ export async function jsonFetch(url,options={}){
 const allowedHosts=['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','eutils.ncbi.nlm.nih.gov','www.nasa.gov','science.nasa.gov','spaceplace.nasa.gov','www.nature.com','www.science.org','www.pnas.org','www.apa.org','www.ncbi.nlm.nih.gov','www.nih.gov','www.nist.gov','www.noaa.gov','www.jstage.jst.go.jp'];
 export function trustedSource(url){try{const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&(allowedHosts.includes(u.hostname)||allowedHosts.includes('www.'+u.hostname)||u.hostname.endsWith('.edu')||u.hostname.endsWith('.ac.jp')||u.hostname.endsWith('.go.jp'));}catch{return false;}}
 function publicAddress(address){return !(/^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|224\.|255\.|::|fc|fd|fe80:)/i.test(address));}
-function pubmedFallback(url){try{const u=new URL(url),id=u.hostname==='pubmed.ncbi.nlm.nih.gov'?u.pathname.match(/^\/(\d+)\/?$/)?.[1]:null;return id?`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${id}&retmode=xml`:null;}catch{return null;}}
+export function sourceCandidates(url){
+ if(!trustedSource(url))return [];
+ const u=new URL(url);
+ const pmid=u.hostname==='pubmed.ncbi.nlm.nih.gov'?u.pathname.match(/^\/(\d+)\/?$/)?.[1]:null;
+ const pmcid=u.hostname==='pmc.ncbi.nlm.nih.gov'?u.pathname.match(/^\/articles\/(PMC\d+)\/?$/)?.[1]:null;
+ // PMC automated retrieval must use an approved public API, never its HTML pages.
+ if(u.hostname==='pmc.ncbi.nlm.nih.gov')return pmcid?[`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pmc&id=${pmcid}&rettype=xml&retmode=xml`]:[];
+ return pmid?[`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&retmode=xml`,url]:[url];
+}
+let ncbiQueue=Promise.resolve();
+async function ncbiPace(){
+ const turn=ncbiQueue.then(()=>new Promise(resolve=>setTimeout(resolve,350)));
+ ncbiQueue=turn.catch(()=>{});await turn;
+}
 function plainText(raw){return raw.replace(/<(script|style|nav|header|footer)[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;|&apos;/g,"'").replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();}
+export function sourcePayload(raw,{xml=false}={}){
+ let content=raw;
+ if(xml){
+  assert(!/<(?:ERROR|ErrorList)\b/i.test(raw),'一次資料APIが本文を返しませんでした。');
+  const abstracts=[...raw.matchAll(/<abstract(?:\s[^>]*)?>([\s\S]*?)<\/abstract>/gi)].map(m=>m[1]);
+  const body=raw.match(/<body(?:\s[^>]*)?>([\s\S]*?)<\/body>/i)?.[1]||'';
+  content=[...abstracts,body].join(' ');
+  assert(content.length>0,'一次資料APIのメタデータだけでは事実確認できません。');
+ }
+ const plain=plainText(content),minLength=xml?350:600;
+ assert(plain.length>minLength&&!/Checking your browser|enable JavaScript.*continue|verify you are human/i.test(plain.slice(0,1500)),'情報源本文を確認できません。別の一次資料が必要です。');
+ const titleRaw=xml?(raw.match(/<(?:ArticleTitle|article-title)[^>]*>([\s\S]*?)<\/(?:ArticleTitle|article-title)>/i)?.[1]):raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+ return {title:plainText(titleRaw||'一次資料').slice(0,300),text:plain.slice(0,18000)};
+}
 export async function sourceText(url){
- const candidates=[pubmedFallback(url),url].filter(Boolean);let lastError=null;
+ const candidates=sourceCandidates(url);let lastError=null;
  for(const candidate of candidates){
   let current=candidate;
   try{
    for(let i=0;i<4;i++){
     assert(trustedSource(current),'一次資料として許可されていないURLです。');
     const host=new URL(current).hostname,ips=await lookup(host,{all:true});assert(ips.length&&ips.every(x=>publicAddress(x.address)),'外部公開の情報源ではありません。');
+    if(host==='eutils.ncbi.nlm.nih.gov')await ncbiPace();
     const r=await fetch(current,{redirect:'manual',signal:AbortSignal.timeout(20000),headers:{'User-Agent':'ShortsLoop/1.0 source-verification'}});
     if([301,302,303,307,308].includes(r.status)){current=new URL(r.headers.get('location'),current).href;continue;}
     assert(r.ok,'情報源を取得できません。');const contentType=(r.headers.get('content-type')||'').toLowerCase(),xml=host==='eutils.ncbi.nlm.nih.gov';assert(contentType.includes('text/html')||xml&&(contentType.includes('xml')||contentType.includes('text/plain')),'自動照合できない本文形式です。');
     let size=0;const chunks=[];for await(const c of r.body){size+=c.length;assert(size<2000000,'情報源が大きすぎます。');chunks.push(c);}
-    const raw=Buffer.concat(chunks).toString(),plain=plainText(raw),minLength=xml?350:600;
-    assert(plain.length>minLength&&!/Checking your browser|enable JavaScript.*continue|verify you are human/i.test(plain.slice(0,1500)),'情報源本文を確認できません。別の一次資料が必要です。');
-    const title=(xml?(raw.match(/<ArticleTitle[^>]*>([\s\S]*?)<\/ArticleTitle>/i)?.[1]):(raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])||'一次資料').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim().slice(0,300);
-    return {url,title,text:plain.slice(0,18000),sha256:hash(raw),fetchedAt:now()};
+    const raw=Buffer.concat(chunks).toString(),payload=sourcePayload(raw,{xml});
+    return {url,...payload,retrievedFrom:current,retrievalMethod:xml?'NCBI E-utilities':'public-html',sha256:hash(raw),fetchedAt:now()};
    }
   }catch(e){lastError=e;}
  }
