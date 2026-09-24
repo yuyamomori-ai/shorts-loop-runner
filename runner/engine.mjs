@@ -1,6 +1,6 @@
 import {musicPreferences,musicCatalog,selectMusic} from '../lib/shorts-music.mjs';
 import {spendingSummary,nextBudgetMonth} from './budget.mjs';
-import {groundPlan,sourceUrlKey,repairPlanShape} from './planning.mjs';
+import {groundPlan,sourceUrlKey,repairPlanShape,normalizeCitedSegment} from './planning.mjs';
 import {productionPace,applyProductionRequest,recordProductionAttempt} from './pacing.mjs';
 import {editorialBrief,editorialPrompt,normalizeEditorialTrial} from './editorial-guidance.mjs';
 import {performanceCandidates,performanceFingerprint} from './performance-learning.mjs';
@@ -130,7 +130,7 @@ export class Engine {
    const searched=new Set(result.sources.map(normalizeUrl));assert(x.sources.every(a=>a.id&&trustedSource(a.url)&&searched.has(normalizeUrl(a.url))),'検索結果で確認できない情報源が含まれています。');
    assert(new Set(x.sources.map(a=>a.id)).size===x.sources.length,'出典IDが重複しています。');
    assert(x.genre===base.genre&&x.hook===base.hook&&x.structure===base.structure,'実験・戦略条件と生成結果が一致しません。');
-   const v={...base,editorialTrial:normalizeEditorialTrial(x.editorialTrial),sourceEvidence:result.sourceEvidence,benchmarkTrial:normalizeBenchmarkTrial(x.benchmarkTrial,references),topic:String(x.topic||x.title).slice(0,120),title:x.title,genre:x.genre,hook:x.hook,structure:x.structure,segments:x.segments.map(y=>({text:y.text,role:['hook','body','answer','cta'].includes(y.role)?y.role:'body',sourceIds:y.sourceIds,...normalizeVisual(y)})),sources:x.sources.map(a=>({id:a.id,url:a.url,title:String(a.title).slice(0,300),publisher:String(a.publisher).slice(0,200),summary:String(a.summary).slice(0,600)})),duration:base.duration,durationBand:base.durationBand,hour:base.hour,privacy:s.settings.privacy,madeForKids:s.settings.madeForKids,description:'',qa:{facts:'pending',rights:'pending',technical:'pending',visual:'pending'},createdAt:now()};delete v.risk;
+   const v={...base,editorialTrial:normalizeEditorialTrial(x.editorialTrial),sourceEvidence:result.sourceEvidence,benchmarkTrial:normalizeBenchmarkTrial(x.benchmarkTrial,references),topic:String(x.topic||x.title).slice(0,120),title:x.title,genre:x.genre,hook:x.hook,structure:x.structure,segments:x.segments.map(y=>normalizeCitedSegment(y,x.sources.map(a=>a.id),!!asset)),sources:x.sources.map(a=>({id:a.id,url:a.url,title:String(a.title).slice(0,300),publisher:String(a.publisher).slice(0,200),summary:String(a.summary).slice(0,600)})),duration:base.duration,durationBand:base.durationBand,hour:base.hour,privacy:s.settings.privacy,madeForKids:s.settings.madeForKids,description:'',qa:{facts:'pending',rights:'pending',technical:'pending',visual:'pending'},createdAt:now()};delete v.risk;
    assert(!d.videos.some(old=>old.topic===v.topic||similarity(videoText(old),videoText(v))>.6),'過去の台本と内容が類似しています。人間の確認が必要です。');
    this.store.update(s=>{this.reserveSchedule(s,v);s.live.videos.unshift(v);if(base.experimentId){const e=s.live.experiments.find(e=>e.id===base.experimentId);e.assignments.push({videoId:v.id,arm:base.experimentArm});}log(s.live,'plan',`AI企画「${v.title}」を作成。戦略 v${v.strategyVersion}。`);});
    this.progress('plan-created',v.id,{sources:v.sources.map(x=>x.url)});await this.ensureVisualPlan(v.id);await this.verify(v.id);this.progress('facts-passed',v.id);this.pendingDraft=null;

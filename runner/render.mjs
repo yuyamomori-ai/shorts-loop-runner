@@ -76,7 +76,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  const allAssets=[...new Map([...(asset?[asset]:[]),...assets].map(a=>[a.id,a])).values()];
  for(const a of allAssets)assert(assetReady(a)&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'使用素材の権利・ファイル整合性を確認できません。');
  for(const a of generatedImages){assert(a.synthetic&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'生成画像の整合性を確認できません。');const info=await probe(a.file);assert(info.streams.some(s=>s.codec_name==='png'&&s.width===1024&&s.height===1536),'生成画像のサイズを確認できません。');}
- const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues,generatedImages}),caption=captionEvents(segments,{size:repair?52:v.captionStyle==='bold'?55:52});
+ const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues,generatedImages}),caption=captionEvents(segments,{size:v.captionStyle==='bold'?60:58});
  const features=sceneFeatures(scenes,cursor,caption.totalChars);
  assert(features.meaningfulChanges>=minimumScenes(cursor)-1,'視覚変化が不足しています。');
  let ass=assHeader(font,caption.size)+caption.events;
@@ -103,14 +103,15 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
    }
   }else if(art){
    input.push('-loop','1','-framerate','30','-i',art.file);
-   const x=scene.effect==='pan'?`(iw-iw/zoom)*(0.2+0.6*min(on/${Math.max(1,scene.duration*30)},1))`:'iw/2-iw/zoom/2';
-   filter=`scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,zoompan=z='min(1.02+on*0.0008,1.14)':x='${x}':y='ih/2-ih/zoom/2':d=1:s=1080x1920:fps=30,setsar=1`;
+   const x=scene.effect==='pan'?`(iw-iw/zoom)*(0.2+0.6*min(on/${Math.max(1,scene.duration*30)},1))`:`(iw-iw/zoom)*${scene.variant===1?'.35':'.65'}`;
+   const z=scene.hook?'max(1.06,1.42-on*0.025)':scene.variant===1?'min(1.45+on*0.001,1.6)':scene.variant===2?'min(1.18+on*0.001,1.35)':'min(1.04+on*0.001,1.18)';
+   filter=`scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,zoompan=z='${z}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=1080x1920:fps=30,setsar=1`;
   }else{
    input.push('-f','lavfi','-i',`color=c=${sceneBackground(scene.variant)}:s=1080x1920:r=30:d=${scene.duration}`);
    filter=`drawgrid=w=120:h=120:t=1:c=0x58819b@0.08,setsar=1`;
   }
-  if(a||art)filter+=`,drawbox=x=110:y=1350:w=844:h=160:color=black@0.52:t=fill`;
-  else if(scene.variant!==1)filter+=`,drawbox=x=110:y=1340:w=844:h=175:color=0x102030@0.82:t=fill`;
+  if(a||art)filter+=`,drawbox=x=110:y=1330:w=844:h=200:color=black@0.72:t=fill`;
+  else if(scene.variant!==1)filter+=`,drawbox=x=110:y=1330:w=844:h=200:color=0x102030@0.82:t=fill`;
   filter+=',format=yuv420p';
   await run('ffmpeg',[...input,'-an','-vf',filter,'-r','30','-t',String(scene.duration),'-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p',file]);sceneFiles.push(file);
  }

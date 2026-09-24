@@ -15,7 +15,7 @@ export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[],ge
   assert(length>0&&Number.isFinite(length),'音声の区間が不正です。');
   const baseTarget=Math.min(3.7,Number(v.sceneSeconds)||visual.durationHint);
   const target=repair?(repairIssues.includes('tempo')?3.7:Math.min(3,baseTarget)):baseTarget;
-  const count=Math.max(1,Math.ceil(length/target));
+  const count=Math.max(1,repairIssues.includes('tempo')?Math.round(length/3.4):Math.ceil(length/target));
   const candidates=[s.assetId,...(s.assetIds||[]),...(v.segmentAssets?.[i]||[])].filter(Boolean);
   if(!candidates.length&&v.assetId)candidates.push(v.assetId); // Legacy TYPE B.
   // A sourced concept can be revealed in the opening without inventing new claims.
@@ -24,7 +24,9 @@ export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[],ge
   for(const id of candidates)assert(assetReady(byId.get(id)), 'シーンに指定された素材が欠損または権利未確認です。');
   for(let j=0;j<count;j++) {
    const assetId=candidates[j%candidates.length]||null;
-   const image=generatedImages.length?generatedImages[i<segments.length/2?0:generatedImages.length-1]:null;
+   // Interleave distinct explanatory graphics instead of filling every cut with the same still.
+   const showImage=i===0||i%2===0&&j===0||j>0&&(i+j)%3===0;
+   const image=generatedImages.length&&showImage?generatedImages[i<segments.length/2?0:generatedImages.length-1]:null;
    const card=!!visual.diagramSpec&&!(i===0&&image)&&(!assetId&&!image||!scenes.some(x=>x.diagramSpec)||j%2===1||i%2===0);
    const visualType=card?(visual.diagramSpec.type==='comparison'?'comparison':'diagram'):assetId?'real_footage':image?'generated_image':'science_card';
    // Fallback labels are verbatim terms from the verified sentence, with no causal arrows.

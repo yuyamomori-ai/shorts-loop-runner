@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {initialState} from '../lib/core.mjs';
 import {visualClaims} from '../lib/visual.mjs';
 import {hash} from '../runner/providers.mjs';
+import {captionChunks,captionLines,captionEvents} from '../runner/science-cards.mjs';
 import {reserveSpend,settleSpend,spendingSummary} from '../runner/budget.mjs';
 import {prepareGeneratedArt} from '../runner/generated-art.mjs';
 import {buildScenePlan,sceneFeatures} from '../runner/visual-plan.mjs';
@@ -23,7 +24,7 @@ test('generated images are sourced to verified narration and cached across visua
  const v=video(),ai={image:async(prompt,file)=>{calls++;writeFileSync(file,'fixture-'+calls);assert(prompt.includes('NOT a dark'));return {model:'fixture',size:'1024x1536',quality:'medium'};}};
  await assert.rejects(prepareGeneratedArt(v,{directory,ai}),/事実確認/);assert.equal(calls,0);
  v.verifiedContentHash=hash(JSON.stringify(visualClaims(v)));const art=await prepareGeneratedArt(v,{directory,ai});assert.equal(calls,2);await prepareGeneratedArt(v,{directory,ai});assert.equal(calls,2);
- const segments=v.segments.map((s,i)=>({...s,start:i*4,end:(i+1)*4})),scenes=buildScenePlan(v,segments,[],{generatedImages:art});assert.equal(scenes[0].visualType,'generated_image');assert.equal(scenes[0].diagramSpec,undefined);assert(scenes.some(s=>s.diagramSpec));assert(scenes.some(s=>s.imageId==='generated-1'));assert.equal(sceneFeatures(scenes,24).realFootageRatio,0);
+ const segments=v.segments.map((s,i)=>({...s,start:i*4,end:(i+1)*4})),scenes=buildScenePlan(v,segments,[],{generatedImages:art});assert.equal(scenes[0].visualType,'generated_image');assert.equal(scenes[0].diagramSpec,undefined);assert(scenes.some(s=>s.diagramSpec));assert(scenes.some(s=>s.imageId==='generated-1'));assert.equal(sceneFeatures(scenes,24).realFootageRatio,0);assert(scenes.some(s=>!s.imageId&&!s.assetId));assert(scenes.filter(s=>s.imageId).length<scenes.length*.7);
  writeFileSync(art[0].file,'changed');await prepareGeneratedArt(v,{directory,ai});assert.equal(calls,3);
 });
 test('free music metadata is pinned; changed media never reaches an upload',async t=>{
@@ -36,4 +37,13 @@ test('malformed scripts skip only the rejected video; rights stops still require
  const s=initialState();requestPublicAutopilot(s,'new-request');pauseAutomation(s,'台本の形式が不正です。');assert.equal(s.settings.paused,false);
  s.automation.reason='台本の形式が不正です。';s.automation.phase='attention';requestPublicAutopilot(s,'new-request-2');assert.equal(s.automation.phase,'waiting');
  pauseAutomation(s,'著作権確認に失敗');requestPublicAutopilot(s,'new-request-3');assert.equal(s.automation.phase,'attention');assert.equal(s.settings.paused,true);
+});
+
+
+test('caption timing follows phrase length and keeps a short question separate from its answer',()=>{
+ const text='え、温かいと泡増えるの？そう、温度で溶けにくくなるからです。',cards=captionChunks(text);
+ assert.equal(cards[0],'え、温かいと泡増えるの？');assert(!captionLines(cards[1]).includes('に\\Nく'));
+ const captions=captionEvents([{text,start:0,end:9}]);
+ assert.equal(captions.timeline[0].start,0);assert.equal(captions.timeline.at(-1).end,9);
+ assert(captions.timeline[0].end<4.5);assert.equal(captions.timeline[0].end,captions.timeline[1].start);
 });

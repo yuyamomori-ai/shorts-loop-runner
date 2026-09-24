@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape} from '../runner/planning.mjs';
+import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape,normalizeCitedSegment} from '../runner/planning.mjs';
 import {trustedSource} from '../runner/providers.mjs';
 const url='https://spaceplace.nasa.gov/blue-sky/en/';
 const candidate={value:{genre:'科学',hook:'question',structure:'story',sources:[{id:'bad',url}],segments:[],risk:'none'},sources:[]};
@@ -29,4 +29,10 @@ test('unavailable or non-primary URLs never lead to a paid repair or invented ev
 test('two links redirecting to one document cannot satisfy the two-source requirement',async()=>{
  const ai={response:async()=>{throw Error('must not generate');}};
  await assert.rejects(groundPlan(ai,{...candidate,sources:['https://www.nasa.gov/alias']},{minSources:2,fetchSource:async()=>evidence(url)}),/一次資料が足りない/);
+});
+
+test('diagram citations join their segment only when already registered; fact QA remains pending',()=>{
+ const x={text:'温度と圧力の説明',role:'body',sourceIds:['s1'],diagramSpec:{type:'process',labels:['液体','気体'],sourceIds:['s2']}};
+ const s=normalizeCitedSegment(x,['s1','s2']);assert.deepEqual(s.sourceIds,['s1','s2']);assert.equal(s.qa,undefined);
+ assert.throws(()=>normalizeCitedSegment(x,['s1']),/登録された資料/);
 });

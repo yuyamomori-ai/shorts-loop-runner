@@ -115,9 +115,9 @@ export function sceneOverlayEvents(scene) {
  const {start:a,end:b}=scene;
  let out=scene.assetId||scene.imageId?'':scienceCardEvents(scene);
  // Owner preference: large red headline with a white outline, separate from captions.
- if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?9:12)}`,3);
+ if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?7:11)}`,3);
  if(scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28}参考映像`,3);
- if(scene.imageId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28\\1c&H203040&\\3c&HFFFFFF&\\bord2}AI生成イメージ`,3);
+ if(scene.imageId)out+=event(a,b,'Meta',`{\\an7\\pos(96,560)\\fs28\\1c&H203040&\\3c&HFFFFFF&\\bord2}AI生成イメージ`,3);
  if(['slow','replay'].includes(scene.effect)&&scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,455)}${scene.effect==='slow'?'SLOW ×0.72':'REPLAY'}`,3);
  if(scene.callout)out+=event(a+.25,Math.min(b,a+2.8),'Label',`{\\an8\\move(525,1280,525,1258,0,180)\\fs39\\1c&H60D8FF&\\bord3\\fad(80,80)}${wrapLabel(scene.callout,18)}`,3);
  return out;
@@ -131,7 +131,7 @@ export function captionChunks(text) {
    const count=Math.ceil(chars.length/26),target=chars.length/count,minimum=Math.max(8,chars.length-(count-1)*26);let offset=0,best=Infinity;
    for(const part of segmenter.segment(chars.join(''))){
     offset+=Array.from(part.segment).length;if(offset>26)break;if(offset<minimum||chars.length-offset<8)continue;
-    const bonus=/[。！？、？：]$/.test(part.segment)?4:/[はがをにでともや]$/.test(part.segment)?1.3:0,score=Math.abs(offset-target)-bonus;
+    const bonus=/[。！？!?]$/.test(part.segment)?8:/[、：]$/.test(part.segment)?2:/[はがをにでともや]$/.test(part.segment)?1.3:0,score=Math.abs(offset-target)-bonus;
     if(score<best){best=score;end=offset;}
    }
   }
@@ -139,16 +139,28 @@ export function captionChunks(text) {
  }
  return cards;
 }
+export function captionLines(value){
+ const chars=Array.from(value);if(chars.length<=14)return value;
+ let offset=0,end=Math.ceil(chars.length/2),best=Infinity;
+ for(const part of new Intl.Segmenter('ja',{granularity:'word'}).segment(value)){
+  offset+=Array.from(part.segment).length;if(offset>14)break;if(chars.length-offset>14)continue;
+  const bonus=/[。！？!?]$/.test(part.segment)?5:/[、：]$/.test(part.segment)?2:0;
+  const right=chars.slice(offset).join('');
+  const score=Math.abs(offset-chars.length/2)-bonus+(/^[ぁ-ん]/.test(right)?4:0);if(score<best){best=score;end=offset;}
+ }
+ return chars.slice(0,end).join('')+'\\N'+chars.slice(end).join('');
+}
+
 export function captionEvents(segments,{size=52}={}) {
  let out='',minSeconds=Infinity,totalChars=0;const timeline=[];
  for(const s of segments) {
-  const duration=s.end-s.start,cards=captionChunks(s.text);
+  const duration=s.end-s.start,cards=captionChunks(s.text),weights=cards.map(x=>Array.from(x).length),total=weights.reduce((a,b)=>a+b,0);let elapsed=0;
   for(let i=0;i<cards.length;i++) {
-   const a=s.start+duration*i/cards.length,b=s.start+duration*(i+1)/cards.length;
+   const a=s.start+duration*elapsed/total;elapsed+=weights[i];const b=i===cards.length-1?s.end:s.start+duration*elapsed/total;
    if(b-a<.95||Array.from(cards[i]).length/(b-a)>16)throw Error('字幕を読む時間が不足しています。台本を短くしてください。');
    minSeconds=Math.min(minSeconds,b-a);totalChars+=Array.from(cards[i]).length;
    timeline.push({start:a,end:b,text:cards[i]});
-   let text=wrapLabel(cards[i],13);
+   let text=captionLines(cards[i]);
    const keyword=s.overlay&&Array.from(s.overlay).length<=8?assSafe(s.overlay):null;
    if(keyword&&text.includes(keyword))text=text.replace(keyword,`{\\1c&H7AE6AA&}${keyword}{\\1c&HFFFFFF&}`);
    out+=event(a,b,'Caption',`{\\an2\\pos(522,1490)\\fs${size}\\fad(55,55)}${text}`,5);
