@@ -63,3 +63,5 @@ test('structured visual repair constrains the actual failing indices and registe
  assert.deepEqual(items.properties.index.enum,[3]);assert.equal(schema.properties.visuals.maxItems,1);assert.equal(items.additionalProperties,false);
  assert.deepEqual(items.properties.diagramSpec.anyOf[0].properties.sourceIds.items.enum,['s1','s2']);
 });
+
+test('correction diagrams cannot reintroduce unsupported causal arrows',()=>{assert.deepEqual(diagramRepairSchema([3],['s1']).properties.visuals.items.properties.diagramSpec.anyOf[0].properties.type.enum,['concept','comparison']);});

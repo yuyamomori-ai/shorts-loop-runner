@@ -29,6 +29,6 @@ export function canRepairVisualFacts(v,q=v?.factCheck){
 }
 
 export function diagramRepairSchema(indices,sourceIds){
- const diagram={type:'object',additionalProperties:false,required:['type','labels','sourceIds','caption'],properties:{type:{type:'string',enum:['concept','comparison','process']},labels:{type:'array',minItems:2,maxItems:3,items:{type:'string',maxLength:14}},sourceIds:{type:'array',minItems:1,items:{type:'string',enum:sourceIds}},caption:{type:'string',maxLength:28}}};
+ const diagram={type:'object',additionalProperties:false,required:['type','labels','sourceIds','caption'],properties:{type:{type:'string',enum:['concept','comparison']},labels:{type:'array',minItems:2,maxItems:3,items:{type:'string',maxLength:14}},sourceIds:{type:'array',minItems:1,items:{type:'string',enum:sourceIds}},caption:{type:'string',maxLength:28}}};
  return {type:'object',additionalProperties:false,required:['visuals'],properties:{visuals:{type:'array',minItems:indices.length,maxItems:indices.length,items:{type:'object',additionalProperties:false,required:['index','visualType','overlay','callout','diagramSpec'],properties:{index:{type:'integer',enum:indices},visualType:{type:'string',enum:['diagram','comparison','science_card']},overlay:{type:'string',maxLength:18},callout:{type:'string',maxLength:18},diagramSpec:{anyOf:[diagram,{type:'null'}]}}}}}};
 }

@@ -1,3 +1,4 @@
+import {promoteAcceptedValidation} from './promote-validation.mjs';
 import {validationFile} from './validation-files.mjs';
 import {reviewTarget,reviewFile,reviewPlan,reviewVideoId} from './review-files.mjs';
 import {startPreparation,resumePreparedVisualAfterStockConnection} from './preparation.mjs';
@@ -74,6 +75,7 @@ const server=createServer(async(req,res)=>{
  }catch(e){json({error:e.message},400);}
 });
 server.listen(PORT,HOST,()=>{
+ try{const queued=promoteAcceptedValidation(engine,process.env.SHORTSLOOP_PROMOTE_VALIDATION);if(queued)console.log('Prepared publication: '+JSON.stringify(queued));}catch(e){console.error('Prepared publication held:',e.message);}
  console.log(`Shorts Loop: http://localhost:${PORT}`);
  console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase,stopReason:store.read().automation?.reason||null,retryAt:store.read().automation?.retryAt||null}));
  if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)})){
