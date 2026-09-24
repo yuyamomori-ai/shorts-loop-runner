@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --include=dev --no-audit --no-fund
 COPY . .
+RUN node --test tests/acceptance-preflight.test.mjs
 RUN npm run build:local
 
 FROM node:24-bookworm-slim

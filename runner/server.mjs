@@ -79,7 +79,7 @@ server.listen(PORT,HOST,()=>{
  if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)})){
   console.log('Production preparation queued; waiting for the current worker when necessary.');
  }else if(process.env.SHORTSLOOP_VALIDATE_ON_START==='true'){
-  engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1'}).catch(e=>console.error('Visual validation stopped:',e.message));
+  engine.job('validate',{runId:process.env.SHORTSLOOP_VALIDATION_ID||'visual-v1',requireYouTube:process.env.SHORTSLOOP_VALIDATION_RENDER_ONLY!=='true'}).catch(e=>console.error('Visual validation stopped:',e.message));
  }else pump();
 });
 const timer=setInterval(pump,60000);
