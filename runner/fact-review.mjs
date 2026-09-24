@@ -14,7 +14,7 @@ export function factReviewPass(v,q){
 
 export const UNVERIFIED_FACT_RISK='出典と台本の照合で未確認の情報があります。';
 export function canRepairVisualFacts(v,q=v?.factCheck){
- if(!v||v.youtubeId||v.uploadIntent||v.uploadSession||v.risk&&v.risk!==UNVERIFIED_FACT_RISK||(v.visualFactRepairs||0)>=1||v.qa?.assetRights==='failed'||v.visualQa?.safetyConcern||v.visualQa?.copyrightConcern)return false;
+ if(!v||v.youtubeId||v.uploadIntent||v.uploadSession||v.risk&&v.risk!==UNVERIFIED_FACT_RISK||(v.visualFactRepairs||0)>=2||v.qa?.assetRights==='failed'||v.visualQa?.safetyConcern||v.visualQa?.copyrightConcern)return false;
  if(q?.allSupported!==true||q?.allVisualsSupported!==false||q?.highRisk!==false||!Array.isArray(q.checks)||q.checks.length!==v.segments.length)return false;
  const registered=new Set(v.sources.map(s=>s.id));if(v.assetId)registered.add('asset');
  let failed=0;
@@ -26,4 +26,9 @@ export function canRepairVisualFacts(v,q=v?.factCheck){
   else if(c.visualSupported!==true)return false;
  }
  return failed>0;
+}
+
+export function diagramRepairSchema(indices,sourceIds){
+ const diagram={type:'object',additionalProperties:false,required:['type','labels','sourceIds','caption'],properties:{type:{type:'string',enum:['concept','comparison','process']},labels:{type:'array',minItems:2,maxItems:3,items:{type:'string',maxLength:14}},sourceIds:{type:'array',minItems:1,items:{type:'string',enum:sourceIds}},caption:{type:'string',maxLength:28}}};
+ return {type:'object',additionalProperties:false,required:['visuals'],properties:{visuals:{type:'array',minItems:indices.length,maxItems:indices.length,items:{type:'object',additionalProperties:false,required:['index','visualType','overlay','callout','diagramSpec'],properties:{index:{type:'integer',enum:indices},visualType:{type:'string',enum:['diagram','comparison','science_card']},overlay:{type:'string',maxLength:18},callout:{type:'string',maxLength:18},diagramSpec:{anyOf:[diagram,{type:'null'}]}}}}}};
 }

@@ -30,7 +30,8 @@ function logAcceptanceFrames(base,runId,report){
  if(process.env.SHORTSLOOP_VALIDATION_LOG_FRAMES!=='true')return;
  for(const test of report.tests||[]){
   if(!['science','knowledge'].includes(test.name))continue;
-  for(const frame of [0,2,6]){
+  const explanatory=(test.manifest?.frameTimes||[]).map((time,index)=>({index,scene:test.scenePlan?.find(s=>time>=s.start&&time<s.end)})).filter(x=>x.scene?.diagramSpec&&!x.scene?.imageId).map(x=>x.index);
+  for(const frame of [...new Set([0,...explanatory.slice(0,2),2,6])].slice(0,3)){
    const file=validationFile(base,`/api/validation/${runId}/${test.name}/frame-${frame}.jpg`);
    if(!file)continue;const bytes=readFileSync(file);if(bytes.length>100000)continue;
    const data=bytes.toString('base64'),size=6000,parts=Math.ceil(data.length/size);
@@ -54,7 +55,7 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
  const request=process.env.SHORTSLOOP_VALIDATION_REPAIR_REQUEST||'';
  if(existsSync(reportFile)){
   const saved=JSON.parse(readFileSync(reportFile));saved.preflight=checks;saved.youtubeConnectionPreserved=checks.youtubeAuthorized;
-  const repair=saved.status==='failed'&&/^[a-zA-Z0-9-]{1,80}$/.test(request)&&saved.repairRequest!==request&&(saved.repairAttempts||0)<2;
+  const repair=saved.status==='failed'&&/^[a-zA-Z0-9-]{1,80}$/.test(request)&&saved.repairRequest!==request&&(saved.repairAttempts||0)<3;
   if(!repair){writeFileSync(reportFile,JSON.stringify(saved,null,2));logAcceptanceFrames(liveEngine.store.directory,runId,saved);return saved;}
   previous=saved;
  }
@@ -65,7 +66,8 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
   repairRequest:previous?request:null,repairAttempts:previous?(previous.repairAttempts||0)+1:0,
   attemptHistory:previous?[...(previous.attemptHistory||[]),{finishedAt:previous.finishedAt,status:previous.status,tests:previous.tests.map(({name,videoId,passed,error})=>({name,videoId,passed,error}))}].slice(-2):[]};
  const progress=()=>liveEngine.store.update(s=>{s.visualAcceptance=report;});progress();
- // Persist the bounded retry intent before any paid request; restarts cannot reset it.
+ // Up to three explicit deployment validation requests; automatic visual repair remains two.
+ // Persist each bounded intent before any paid request; restarts cannot reset it.
  writeFileSync(reportFile,JSON.stringify(report,null,2));
  try{
   report.youtubeTokenRefreshPassed=checks.youtubeAuthorized;

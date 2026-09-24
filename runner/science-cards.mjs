@@ -115,7 +115,7 @@ export function sceneOverlayEvents(scene) {
  const {start:a,end:b}=scene;
  let out=scene.assetId||scene.imageId?'':scienceCardEvents(scene);
  // Owner preference: large red headline with a white outline, separate from captions.
- if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?7:11)}`,3);
+ if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${headlineLabel(scene.overlay,scene.hook?7:11)}`,3);
  if(scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28}参考映像`,3);
  if(scene.imageId)out+=event(a,b,'Meta',`{\\an7\\pos(96,560)\\fs28\\1c&H203040&\\3c&HFFFFFF&\\bord2}AI生成イメージ`,3);
  if(['slow','replay'].includes(scene.effect)&&scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,455)}${scene.effect==='slow'?'SLOW ×0.72':'REPLAY'}`,3);
@@ -139,11 +139,11 @@ export function captionChunks(text) {
  }
  return cards;
 }
-export function captionLines(value){
- const chars=Array.from(value);if(chars.length<=14)return value;
+export function captionLines(value,maxChars=14){
+ const chars=Array.from(value);if(chars.length<=maxChars)return value;
  let offset=0,end=Math.ceil(chars.length/2),best=Infinity;
  for(const part of new Intl.Segmenter('ja',{granularity:'word'}).segment(value)){
-  offset+=Array.from(part.segment).length;if(offset>14)break;if(chars.length-offset>14)continue;
+  offset+=Array.from(part.segment).length;if(offset>maxChars)break;if(chars.length-offset>maxChars)continue;
   const bonus=/[。！？!?]$/.test(part.segment)?5:/[、：]$/.test(part.segment)?2:0;
   const right=chars.slice(offset).join('');
   const score=Math.abs(offset-chars.length/2)-bonus+(/^[ぁ-ん]/.test(right)?4:0);if(score<best){best=score;end=offset;}
@@ -168,3 +168,5 @@ export function captionEvents(segments,{size=52}={}) {
  }
  return {events:out,minSeconds,totalChars,size,maxLines:2,bottom:1490,timeline};
 }
+
+export function headlineLabel(value,maxChars=7){const safe=assSafe(value);return Array.from(safe).length<=maxChars*2?captionLines(safe,maxChars):wrapLabel(safe,maxChars);}

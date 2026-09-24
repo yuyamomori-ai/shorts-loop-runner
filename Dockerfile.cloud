@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --include=dev --no-audit --no-fund
 COPY . .
-RUN node --test tests/acceptance-preflight.test.mjs tests/generated-media.test.mjs tests/planning.test.mjs tests/source-facts.test.mjs tests/engine.test.mjs tests/automation.test.mjs tests/production-loop.test.mjs tests/presentation-repair.test.mjs tests/originality-context.test.mjs tests/budget.test.mjs
+RUN node --test tests/acceptance-preflight.test.mjs tests/generated-media.test.mjs tests/planning.test.mjs tests/source-facts.test.mjs tests/engine.test.mjs tests/automation.test.mjs tests/production-loop.test.mjs tests/presentation-repair.test.mjs tests/originality-context.test.mjs tests/budget.test.mjs tests/media-policy.test.mjs
 RUN npm run build:local
 
 FROM node:24-bookworm-slim

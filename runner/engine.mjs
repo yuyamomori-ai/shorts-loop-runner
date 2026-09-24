@@ -1,4 +1,5 @@
-import {FACT_REVIEW_INSTRUCTIONS,FACT_REVIEW_SCHEMA,factReviewPass,UNVERIFIED_FACT_RISK,canRepairVisualFacts} from './fact-review.mjs';
+import {requeueOutdatedMedia} from './media-policy.mjs';
+import {FACT_REVIEW_INSTRUCTIONS,FACT_REVIEW_SCHEMA,factReviewPass,UNVERIFIED_FACT_RISK,canRepairVisualFacts,diagramRepairSchema} from './fact-review.mjs';
 import {musicPreferences,musicCatalog,selectMusic} from '../lib/shorts-music.mjs';
 import {spendingSummary,nextBudgetMonth} from './budget.mjs';
 import {groundPlan,sourceUrlKey,repairPlanShape,normalizeCitedSegment,originalityRepairPrompt} from './planning.mjs';
@@ -186,7 +187,7 @@ export class Engine {
   const failed=v.factCheck.checks.filter(c=>c.visualSupported===false).map(c=>c.index);
   this.store.update(s=>{s.live.videos.find(x=>x.id===id).visualFactRepairs=(v.visualFactRepairs||0)+1;});
   this.progress('diagram-fact-repair',id,{segments:failed});
-  const q=await this.ai.response(`文章の主張は裏付けられたが、図解の表現だけが独立事実確認で不合格になった。未確認の因果や仕組みを捏造しない。指摘されたindexの視覚設計だけを1回修正。text/role/登録出典を変更しない。因果が限定的なら、確認された実験の手順・対象・条件付きの比較をconcept/comparisonの図にする。因果を意味する矢印を使わずに条件と限界を図内に短く表示できる。根拠がなければdiagramSpec=null、visualType=science_cardとして確認済み文章のキーワードだけを表示。他の確認済み説明図は保持される。overlay/calloutにも新しい事実を加えない。${VISUAL_SCHEMA}。JSON {"visuals":[{"index":0,"visualType":"diagram|comparison|science_card","overlay":"短い表示","callout":"","diagramSpec":{...}}]}。修正対象index=${JSON.stringify(failed)}。判定=${JSON.stringify(v.factCheck)}。元台本=${JSON.stringify(v.segments)}。唯一の証拠本文=${JSON.stringify(v.sourceEvidence||[])}`);
+  const q=await this.ai.response(`文章の主張は裏付けられたが、図解の表現だけが独立事実確認で不合格になった。未確認の因果や仕組みを捏造しない。指摘されたindexの視覚設計だけを1回修正。text/role/登録出典を変更しない。因果が限定的なら、確認された実験の手順・対象・条件付きの比較をconcept/comparisonの図にする。因果を意味する矢印を使わずに条件と限界を図内に短く表示できる。根拠がなければdiagramSpec=null、visualType=science_cardとして確認済み文章のキーワードだけを表示。他の確認済み説明図は保持される。overlay/calloutにも新しい事実を加えない。${VISUAL_SCHEMA}。JSON {"visuals":[{"index":${failed[0]},"visualType":"diagram|comparison|science_card","overlay":"短い表示","callout":"","diagramSpec":{...}}]}。修正対象index=${JSON.stringify(failed)}。判定=${JSON.stringify(v.factCheck)}。元台本=${JSON.stringify(v.segments)}。唯一の証拠本文=${JSON.stringify(v.sourceEvidence||[])}`,{schema:diagramRepairSchema(failed,v.sources.map(s=>s.id))});
   const changes=q.value.visuals;assert(Array.isArray(changes)&&changes.length===failed.length&&failed.every(index=>changes.filter(c=>c.index===index).length===1),'図解修正の対応が不正です。');
   const segments=v.segments.map((s,index)=>{
    if(!failed.includes(index))return s;
@@ -379,6 +380,7 @@ export class Engine {
   for(const v of s.live.videos.filter(v=>v.youtubeId&&['published','scheduled'].includes(v.status)&&v.privacy==='public'&&(!v.publishAt||Date.parse(v.publishAt)<=Date.now())&&!v.publicVerifiedAt))await this.confirmPublication(v.id);
   for(const v of s.live.videos.filter(v=>v.status==='published'&&v.publicVerifiedAt&&v.thumbnail?.status==='retry'))await this.uploadThumbnail(v.id);
   if(this.store.read().settings.paused)return;
+  const refreshed=this.store.update(s=>requeueOutdatedMedia(s));for(const id of refreshed)this.progress('media-policy-refresh',id);s=this.store.read();
   const local=new Date();const day=dateIn(local,'Asia/Tokyo');const hour=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(local);
   // Prepare ahead of due times. A restart can't duplicate a date-keyed daily plan.
   if(s.settings.budgetPacing){
