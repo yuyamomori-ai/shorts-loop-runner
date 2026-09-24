@@ -17,3 +17,9 @@ test('acceptance retries preserve factual, rights, private-only and upload dupli
  assert(canRepairAcceptance({passed:false,error:'図解は同じセグメントの出典で裏付けてください。'},null));
  assert(!canRepairAcceptance({passed:false,error:'著作権確認に失敗'},null));
 });
+
+test('a retrieval failure can retry an uncreated candidate but cannot reset factual rejection',()=>{
+ const prior={passed:false,error:'取得可能な一次資料が足りないため、根拠のない企画は制作しません。'};
+ assert(canRepairAcceptance(prior,null));
+ assert(!canRepairAcceptance(prior,{privacy:'private',risk:'unverified',qa:{facts:'failed'}}));
+});

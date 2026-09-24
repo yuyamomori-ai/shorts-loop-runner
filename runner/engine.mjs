@@ -1,6 +1,6 @@
 import {musicPreferences,musicCatalog,selectMusic} from '../lib/shorts-music.mjs';
 import {spendingSummary,nextBudgetMonth} from './budget.mjs';
-import {groundPlan,sourceUrlKey,repairPlanShape,normalizeCitedSegment} from './planning.mjs';
+import {groundPlan,sourceUrlKey,repairPlanShape,normalizeCitedSegment,originalityRepairPrompt} from './planning.mjs';
 import {productionPace,applyProductionRequest,recordProductionAttempt} from './pacing.mjs';
 import {editorialBrief,editorialPrompt,normalizeEditorialTrial} from './editorial-guidance.mjs';
 import {performanceCandidates,performanceFingerprint} from './performance-learning.mjs';
@@ -101,9 +101,9 @@ export class Engine {
   const x=q.value;for(const k of ['originality','commentary','editing','educational','entertainment','copyrightRisk','reusedRisk'])assert(Number.isFinite(x[k])&&x[k]>=0&&x[k]<=100,'独自性審査のスコア形式が不正です。');assert(Number.isFinite(x.confidence),'独自性審査の確信度がありません。');return {...x,checkedAt:now(),method:'AIによる制作物の内部評価。法的判定・YouTube審査の代用ではありません。'};
  }
  async repairOriginality(id,review){
-  const v=this.store.read().live.videos.find(x=>x.id===id);const q=await this.ai.response(`日本語Shortsの独自性を1回だけ改善。未確認の事実や新規URLを追加しない。フック1〜2秒、全体20〜60秒。出典対応を保持し、独自の補足とオチ、テンポを改善。映像設計も保持・改善。${CREATIVE_BRIEF} ${VISUAL_SCHEMA}。修正理由=${review.fix}。JSON {"segments":[{"text":"台本","role":"hook|body|answer|cta","sourceIds":["s1"],"effect":"zoom|slow|replay|highlight|clean","callout":"短い任意のツッコミ"}]}。元台本=${JSON.stringify(v.segments)}。出典=${JSON.stringify(v.sources)}`);
-  const segments=q.value.segments;assert(Array.isArray(segments)&&segments.length>=4&&segments.length<=10&&segments.every(x=>typeof x.text==='string'&&x.text.length<=150&&Array.isArray(x.sourceIds)),'自動修正の台本が不正です。');
-  this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.segments=segments.map(s=>({...s,...normalizeVisual(s)}));delete x.segmentAssets;x.assetIds=x.assetId?[x.assetId]:[];x.revision++;x.approvedRevision=null;x.qa.facts='pending';x.originalityRepairs=(x.originalityRepairs||0)+1;x.status='draft';log(s.live,'repair','独自性審査の結果を使い、台本を1回修正しました。');});await this.ensureVisualPlan(id);await this.verify(id);
+  const v=this.store.read().live.videos.find(x=>x.id===id);const q=await this.ai.response(originalityRepairPrompt(v,review));
+  const segments=q.value.segments;assert(Array.isArray(segments)&&segments.length>=6&&segments.length<=8&&segments[0]?.role==='hook'&&Array.from(segments[0]?.text||'').length<=12&&segments.reduce((n,s)=>n+Array.from(s.text||'').length,0)<=220&&segments.every(x=>typeof x.text==='string'&&x.text.length>0&&x.text.length<=100&&!/[→⇒]|^(答え|結論|実験)[:：]/.test(x.text)&&Array.isArray(x.sourceIds)),'自動修正の台本が不正です。');
+  this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.segments=segments.map(s=>normalizeCitedSegment(s,v.sources.map(x=>x.id),!!v.assetId));delete x.segmentAssets;x.assetIds=x.assetId?[x.assetId]:[];x.revision++;x.approvedRevision=null;x.qa.facts='pending';x.originalityRepairs=(x.originalityRepairs||0)+1;x.status='draft';log(s.live,'repair','独自性審査の結果を使い、台本を1回修正しました。');});await this.ensureVisualPlan(id);await this.verify(id);
  }
  async generate(count,requestedType='auto',options={}){
   assert(Number.isSafeInteger(count)&&count>=1,'企画数は1以上の整数です。');

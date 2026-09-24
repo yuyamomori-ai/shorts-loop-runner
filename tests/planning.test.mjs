@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape,normalizeCitedSegment} from '../runner/planning.mjs';
+import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape,normalizeCitedSegment,prioritizedSourceUrls,originalityRepairPrompt} from '../runner/planning.mjs';
 import {trustedSource} from '../runner/providers.mjs';
 const url='https://spaceplace.nasa.gov/blue-sky/en/';
 const candidate={value:{genre:'科学',hook:'question',structure:'story',sources:[{id:'bad',url}],segments:[],risk:'none'},sources:[]};
@@ -35,4 +35,15 @@ test('diagram citations join their segment only when already registered; fact QA
  const x={text:'温度と圧力の説明',role:'body',sourceIds:['s1'],diagramSpec:{type:'process',labels:['液体','気体'],sourceIds:['s2']}};
  const s=normalizeCitedSegment(x,['s1','s2']);assert.deepEqual(s.sourceIds,['s1','s2']);assert.equal(s.qa,undefined);
  assert.throws(()=>normalizeCitedSegment(x,['s1']),/登録された資料/);
+});
+
+test('source fetch cap includes a second host even when many PMC pages are unavailable',()=>{
+ const pmc=Array.from({length:4},(_,i)=>'https://pmc.ncbi.nlm.nih.gov/articles/PMC'+(1000+i)+'/');
+ const pm=['https://pubmed.ncbi.nlm.nih.gov/27531308/','https://pubmed.ncbi.nlm.nih.gov/32420867/'];
+ const urls=prioritizedSourceUrls([...pmc,...pm,'https://example.invalid/']);
+ assert.equal(urls.length,4);assert.deepEqual(urls,[pm[0],pmc[0],pm[1],pmc[1]]);
+});
+test('editorial repair receives actual evidence and treats review suggestions as unverified',()=>{
+ const prompt=originalityRepairPrompt({segments:[{text:'確認済みの話',sourceIds:['s1']}],sources:[{id:'s1',url}],sourceEvidence:[{id:'s1',text:'Retrieved primary experiment conditions'}]},{fix:'Invent an experiment'});
+ assert(prompt.includes('Retrieved primary experiment conditions'));assert(prompt.includes('レビューの提案は編集の参考で、事実の根拠ではない'));assert(prompt.includes('最大220文字'));
 });

@@ -41,7 +41,7 @@ function logAcceptanceFrames(base,runId,report){
 
 export function canRepairAcceptance(prior,v){
  if(!prior||prior.passed)return false;
- if(!v)return ['図解は同じセグメントの出典で裏付けてください。','企画の出典IDが登録された資料にありません。','台本の形式が不正です。'].includes(prior.error);
+ if(!v)return ['図解は同じセグメントの出典で裏付けてください。','企画の出典IDが登録された資料にありません。','台本の形式が不正です。','取得可能な一次資料が足りないため、根拠のない企画は制作しません。'].includes(prior.error);
  return v.privacy==='private'&&!v.youtubeId&&!v.uploadIntent&&!v.uploadSession&&!v.risk&&v.qa?.facts==='passed'&&v.qa?.assetRights!=='failed'&&repairableVisualReview(v.visualQa);
 }
 // Isolated records, shared monetary/daily ledger, and no upload capability.
@@ -83,7 +83,7 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
     const v=store.read().live.videos.find(v=>v.id===id),issues=blockers(v,true);
     report.tests.push({name:spec.name,videoId:id,title:v.title,passed:!issues.length,issues,manifest:v.mediaManifest,segments:v.segments.map(({audio,...s})=>s),sources:v.sources,scenePlan:v.scenePlan,visualQa:v.visualQa,facts:v.qa.facts,rights:v.qa.rights,originality:v.originality});
     console.log('Visual acceptance: '+JSON.stringify({name:spec.name,passed:!issues.length,videoId:id,narration:v.mediaManifest.narration,scenes:v.mediaManifest.sceneCount,assets:v.mediaManifest.assetCount,images:v.mediaManifest.generatedImageCount,music:v.mediaManifest.music,diagrams:v.mediaManifest.diagramCount,seconds:v.duration,visualQa:v.visualQa.passed}));
-   }catch(e){report.tests.push({name:spec.name,videoId:id,passed:false,error:e.message});console.log('Visual acceptance: '+spec.name+' failed: '+e.message);if(['AI_BILLING','DAILY_AI_BUDGET','MONTHLY_AI_BUDGET'].includes(e.code)){report.error=e.message;report.errorCode=e.code;break;}}
+   }catch(e){const failed=id&&store.read().live.videos.find(v=>v.id===id);report.tests.push({name:spec.name,videoId:id,passed:false,error:e.message,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality});console.log('Visual acceptance: '+spec.name+' failed: '+e.message);console.log('Visual acceptance failure: '+JSON.stringify({name:spec.name,videoId:id,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality}));if(['AI_BILLING','DAILY_AI_BUDGET','MONTHLY_AI_BUDGET'].includes(e.code)){report.error=e.message;report.errorCode=e.code;break;}}
    writeFileSync(reportFile,JSON.stringify(report,null,2));
   }
   report.status=report.tests.length===2&&report.tests.every(t=>t.passed)?(requireYouTube?'passed':'renderer_passed'):'failed';
