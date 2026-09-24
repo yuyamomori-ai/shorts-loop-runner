@@ -70,7 +70,7 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
   report.youtubeTokenRefreshPassed=checks.youtubeAuthorized;
   const prerequisites=acceptanceIssues(checks,{requireYouTube});if(prerequisites.length)throw Error(prerequisites.join(' '));
   if(!engine.ai.key)throw Error('OpenAI接続が見つからず、実AI音声の検証を開始できません。');
-  for(const spec of [{name:'science',genre:'科学',topic:'炭酸飲料の圧力と気泡。一次資料で根拠を確認できない場合は身近な光や温度の科学。'},{name:'knowledge',genre:'記憶',topic:'情報を入力して保持し、思い出す学習。研究対象と限界を明示。'}]){
+  for(const spec of [{name:'science',genre:'科学',sourceUrls:['https://pubmed.ncbi.nlm.nih.gov/30925060/','https://pmc.ncbi.nlm.nih.gov/articles/PMC6963625/'],topic:'炭酸飲料の圧力と気泡。一次資料で根拠を確認できない場合は身近な光や温度の科学。'},{name:'knowledge',genre:'記憶',topic:'情報を入力して保持し、思い出す学習。研究対象と限界を明示。'}]){
    const prior=previous?.tests.find(t=>t.name===spec.name);
    if(prior?.passed){report.tests.push(prior);continue;}
    console.log('Visual acceptance: '+(prior?'repairing ':'generating ')+spec.name);
@@ -83,7 +83,7 @@ export async function runAcceptance(liveEngine,{runId='visual-v1',requireYouTube
     const v=store.read().live.videos.find(v=>v.id===id),issues=blockers(v,true);
     report.tests.push({name:spec.name,videoId:id,title:v.title,passed:!issues.length,issues,manifest:v.mediaManifest,segments:v.segments.map(({audio,...s})=>s),sources:v.sources,scenePlan:v.scenePlan,visualQa:v.visualQa,facts:v.qa.facts,rights:v.qa.rights,originality:v.originality});
     console.log('Visual acceptance: '+JSON.stringify({name:spec.name,passed:!issues.length,videoId:id,narration:v.mediaManifest.narration,scenes:v.mediaManifest.sceneCount,assets:v.mediaManifest.assetCount,images:v.mediaManifest.generatedImageCount,music:v.mediaManifest.music,diagrams:v.mediaManifest.diagramCount,seconds:v.duration,visualQa:v.visualQa.passed}));
-   }catch(e){const failed=id&&store.read().live.videos.find(v=>v.id===id);report.tests.push({name:spec.name,videoId:id,passed:false,error:e.message,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality});console.log('Visual acceptance: '+spec.name+' failed: '+e.message);console.log('Visual acceptance failure: '+JSON.stringify({name:spec.name,videoId:id,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality}));if(['AI_BILLING','DAILY_AI_BUDGET','MONTHLY_AI_BUDGET'].includes(e.code)){report.error=e.message;report.errorCode=e.code;break;}}
+   }catch(e){if(!id){const candidates=store.read().live.videos.filter(v=>v.genre===spec.genre);if(candidates.length===1)id=candidates[0].id;}const failed=id&&store.read().live.videos.find(v=>v.id===id);report.tests.push({name:spec.name,videoId:id,passed:false,error:e.message,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality});console.log('Visual acceptance: '+spec.name+' failed: '+e.message);console.log('Visual acceptance failure: '+JSON.stringify({name:spec.name,videoId:id,facts:failed?.qa?.facts,factCheck:failed?.factCheck,visualQa:failed?.visualQa,originality:failed?.originality}));if(['AI_BILLING','DAILY_AI_BUDGET','MONTHLY_AI_BUDGET'].includes(e.code)){report.error=e.message;report.errorCode=e.code;break;}}
    writeFileSync(reportFile,JSON.stringify(report,null,2));
   }
   report.status=report.tests.length===2&&report.tests.every(t=>t.passed)?(requireYouTube?'passed':'renderer_passed'):'failed';

@@ -47,3 +47,10 @@ test('editorial repair receives actual evidence and treats review suggestions as
  const prompt=originalityRepairPrompt({segments:[{text:'確認済みの話',sourceIds:['s1']}],sources:[{id:'s1',url}],sourceEvidence:[{id:'s1',text:'Retrieved primary experiment conditions'}]},{fix:'Invent an experiment'});
  assert(prompt.includes('Retrieved primary experiment conditions'));assert(prompt.includes('レビューの提案は編集の参考で、事実の根拠ではない'));assert(prompt.includes('最大220文字'));
 });
+
+test('explicit primary source hints still require retrieved evidence and independent fact QA',async()=>{
+ const preferred='https://pubmed.ncbi.nlm.nih.gov/30925060/';
+ let seen=[];const ai={response:async()=>({value:{risk:'none',segments:[]}})};
+ const result=await groundPlan(ai,candidate,{preferredUrls:[preferred,'https://evil.invalid/'],fetchSource:async u=>{seen.push(u);return evidence(u);}});
+ assert.equal(seen[0],preferred);assert.equal(result.sourceEvidence[0].url,preferred);assert.equal(result.value.qa,undefined);
+});

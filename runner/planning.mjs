@@ -32,8 +32,8 @@ export function originalityRepairPrompt(v,review){
 
 // A model-suggested citation is not evidence. Read its trusted public primary page,
 // rebuild once from the retrieved text, then require the independent fact verifier.
-export async function groundPlan(ai,result,{minSources=1,fetchSource=sourceText,progress=()=>{}}={}){
- const selected=Array.isArray(result.value.sources)?result.value.sources:[],urls=prioritizedSourceUrls([...selected.map(s=>s?.url),...(result.sources||[])]),evidence=[];
+export async function groundPlan(ai,result,{minSources=1,preferredUrls=[],fetchSource=sourceText,progress=()=>{}}={}){
+ const selected=Array.isArray(result.value.sources)?result.value.sources:[],urls=prioritizedSourceUrls([...preferredUrls,...selected.map(s=>s?.url),...(result.sources||[])]),evidence=[];
  for(const url of urls){
   try{const source=await fetchSource(url);assert(trustedSource(source.url)&&source.sha256&&source.text?.length>600,'一次資料の取得証跡が不完全です。');if(evidence.some(e=>sourceUrlKey(e.url)===sourceUrlKey(source.url)))continue;evidence.push({...source,id:'s'+(evidence.length+1),discovery:'retrieved-primary-evidence'});progress('source-retrieved',{url:source.url});}catch(e){progress('source-unavailable',{url,reason:e.message});}
   if(evidence.length>=Math.max(minSources,Math.min(2,selected.length)))break;
