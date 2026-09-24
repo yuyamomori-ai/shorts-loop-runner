@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {groundPlan,sourceUrlKey} from '../runner/planning.mjs';
+import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape} from '../runner/planning.mjs';
 import {trustedSource} from '../runner/providers.mjs';
 const url='https://spaceplace.nasa.gov/blue-sky/en/';
 const candidate={value:{genre:'科学',hook:'question',structure:'story',sources:[{id:'bad',url}],segments:[],risk:'none'},sources:[]};
 const evidence=url=>({url,title:'NASA science',sha256:'fixture-hash',text:'Retrieved primary source. '.repeat(50),fetchedAt:new Date().toISOString()});
+test('one format repair preserves original citations and strategy; it cannot erase a risk',async()=>{
+ let calls=0;const ai={response:async()=>{calls++;return {value:{risk:'none',genre:'invented',sources:[{id:'invented'}],title:'雲の色は？',segments:Array.from({length:6},()=>({text:'説明',sourceIds:['s1']}))}};}};
+ const repaired=await repairPlanShape(ai,candidate);assert(validPlanShape(repaired.value));assert.equal(calls,1);assert.deepEqual(repaired.value.sources,candidate.value.sources);assert.equal(repaired.value.genre,candidate.value.genre);
+ await repairPlanShape(ai,repaired);assert.equal(calls,1);
+ const unsafe={...candidate,value:{...candidate.value,risk:'copyright'}};assert.equal(await repairPlanShape(ai,unsafe),unsafe);assert.equal(calls,1);
+});
 test('source URL normalization ignores tracking but preserves document identifiers',()=>{
  assert.equal(sourceUrlKey(url+'?utm_source=chatgpt.com#summary'),sourceUrlKey(url));
  assert.notEqual(sourceUrlKey(url+'?article=1'),sourceUrlKey(url+'?article=2'));

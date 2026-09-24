@@ -1,4 +1,5 @@
 import {composeMusic,musicStyleFor} from './music.mjs';
+import {prepareLicensedMusic,musicMode,licensedMusicValid} from './licensed-music.mjs';
 import {cleanRenderIntermediates} from './storage.mjs';
 import {mkdirSync,writeFileSync,readFileSync,existsSync,readdirSync,renameSync,unlinkSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -41,7 +42,7 @@ export async function validateMedia(file){
  assert(!/freeze_start:/.test(r.err),'長い静止画面を検出したため投稿を保留します。');
  return {passed:true,decoded:true,noBlackFrames:true,noLongFreeze:true,audioStream:true,...levels,duration};
 }
-export async function renderVideo(v,{directory,ai,preview=false,lightweight=false,englishTest=false,asset=null,assets=[],repair=0,repairIssues=[],retainAudio=false}={}){
+export async function renderVideo(v,{directory,ai,preview=false,lightweight=false,englishTest=false,asset=null,assets=[],generatedImages=[],repair=0,repairIssues=[],retainAudio=false}={}){
  assert(/^[a-zA-Z0-9-]{1,80}$/.test(v.id),'動画IDが不正です。');
  assert(!lightweight||preview,'軽量プレビューは投稿用に使えません。');
  assert(lightweight||ai?.key||process.env.VOICEVOX_URL,'投稿用動画にはAIナレーションが必要です。');
@@ -74,7 +75,8 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  assert(cursor>=20&&cursor<=60,`実際の音声尺が${cursor.toFixed(1)}秒です。20〜60秒に収まる台本に修正してください。`);
  const allAssets=[...new Map([...(asset?[asset]:[]),...assets].map(a=>[a.id,a])).values()];
  for(const a of allAssets)assert(assetReady(a)&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'使用素材の権利・ファイル整合性を確認できません。');
- const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues}),caption=captionEvents(segments,{size:repair?52:v.captionStyle==='bold'?55:52});
+ for(const a of generatedImages){assert(a.synthetic&&existsSync(a.file)&&hash(readFileSync(a.file))===a.sha256,'生成画像の整合性を確認できません。');const info=await probe(a.file);assert(info.streams.some(s=>s.codec_name==='png'&&s.width===1024&&s.height===1536),'生成画像のサイズを確認できません。');}
+ const scenes=buildScenePlan(v,segments,allAssets,{repair,repairIssues,generatedImages}),caption=captionEvents(segments,{size:repair?52:v.captionStyle==='bold'?55:52});
  const features=sceneFeatures(scenes,cursor,caption.totalChars);
  assert(features.meaningfulChanges>=minimumScenes(cursor)-1,'視覚変化が不足しています。');
  let ass=assHeader(font,caption.size)+caption.events;
@@ -85,7 +87,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  writeFileSync(resolve(dir,'captions.srt'),segments.map((s,i)=>`${i+1}\n${time(s.start)} --> ${time(s.end)}\n${s.text}\n`).join('\n'));
  const sceneFiles=[];
  for(const scene of scenes){
-  const a=allAssets.find(a=>a.id===scene.assetId),file=resolve(dir,`scene-${scene.index}.mp4`);
+  const a=allAssets.find(a=>a.id===scene.assetId),art=generatedImages.find(a=>a.id===scene.imageId),file=resolve(dir,`scene-${scene.index}.mp4`);
   const input=['-y'];let filter;
   if(a){
    input.push('-stream_loop','-1','-i',a.file);
@@ -99,23 +101,32 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
     const f=scene.focus;
     if(f)filter+=`,drawbox=x=${Math.round(f.x*1080)}:y=${Math.round(f.y*1920)}:w=${Math.round(f.w*1080)}:h=${Math.round(f.h*1920)}:color=0xaae67a:t=5`;
    }
+  }else if(art){
+   input.push('-loop','1','-framerate','30','-i',art.file);
+   const x=scene.effect==='pan'?`(iw-iw/zoom)*(0.2+0.6*min(on/${Math.max(1,scene.duration*30)},1))`:'iw/2-iw/zoom/2';
+   filter=`scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,zoompan=z='min(1.02+on*0.0008,1.14)':x='${x}':y='ih/2-ih/zoom/2':d=1:s=1080x1920:fps=30,setsar=1`;
   }else{
    input.push('-f','lavfi','-i',`color=c=${sceneBackground(scene.variant)}:s=1080x1920:r=30:d=${scene.duration}`);
    filter=`drawgrid=w=120:h=120:t=1:c=0x58819b@0.08,setsar=1`;
   }
-  if(a)filter+=`,drawbox=x=110:y=1350:w=844:h=160:color=black@0.20:t=fill`;
+  if(a||art)filter+=`,drawbox=x=110:y=1350:w=844:h=160:color=black@0.52:t=fill`;
   else if(scene.variant!==1)filter+=`,drawbox=x=110:y=1340:w=844:h=175:color=0x102030@0.82:t=fill`;
   filter+=',format=yuv420p';
   await run('ffmpeg',[...input,'-an','-vf',filter,'-r','30','-t',String(scene.duration),'-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p',file]);sceneFiles.push(file);
  }
  const list=resolve(dir,'scenes.txt');writeFileSync(list,sceneFiles.map(f=>`file '${f.replaceAll('\\','/').replaceAll("'","'\\''")}'`).join('\n'));
- const nativeSound=process.env.SHORTSLOOP_MUSIC_MODE==='shorts-library';
- const music=resolve(dir,'music.wav'),soundtrack=composeMusic(cursor,scenes.filter((s,i)=>!i||s.effect==='highlight'||s.callout).map(x=>x.start),v.id,musicStyleFor(v),{effectsOnly:nativeSound});writeFileSync(music,soundtrack.bytes);
+ const nativeSound=musicMode()==='shorts-library',licensed=!lightweight&&musicMode()==='licensed'?await prepareLicensedMusic(directory):null;
+ const music=resolve(dir,'music.wav'),soundtrack=composeMusic(cursor,scenes.filter((s,i)=>!i||s.effect==='highlight'||s.callout).map(x=>x.start),v.id,musicStyleFor(v),{effectsOnly:nativeSound||!!licensed});writeFileSync(music,soundtrack.bytes);
  const input=['-y','-f','concat','-safe','0','-i',list];
  for(const f of lightweight?[music]:[...segments.map(x=>x.audio),music])input.push('-i',f);
+ if(licensed)input.push('-stream_loop','-1','-i',licensed.file);
  let af;
  if(lightweight)af='[1:a]anull[a]';
- else af=segments.map((s,i)=>`[${i+1}:a]apad=pad_dur=0.16,atrim=duration=${s.end-s.start},aresample=24000,aformat=channel_layouts=mono[a${i}]`).join(';')+';'+segments.map((_,i)=>`[a${i}]`).join('')+`concat=n=${segments.length}:v=0:a=1,alimiter=limit=0.85:level=0[voice];[voice][${segments.length+1}:a]amix=inputs=2:duration=first:normalize=0,${finalAudioFilter}[a]`;
+ else{
+  af=segments.map((s,i)=>`[${i+1}:a]apad=pad_dur=0.16,atrim=duration=${s.end-s.start},aresample=24000,aformat=channel_layouts=mono[a${i}]`).join(';')+';'+segments.map((_,i)=>`[a${i}]`).join('')+`concat=n=${segments.length}:v=0:a=1,alimiter=limit=0.85:level=0[voice];`;
+  if(licensed)af+=`[${segments.length+2}:a]atrim=duration=${cursor},asetpts=PTS-STARTPTS,loudnorm=I=-31:TP=-9:LRA=7,aresample=48000,afade=t=in:d=0.3,afade=t=out:st=${Math.max(0,cursor-.7)}:d=0.7[bgm];`;
+  af+=`[voice][${segments.length+1}:a]${licensed?'[bgm]':''}amix=inputs=${licensed?3:2}:duration=first:normalize=0,${finalAudioFilter}[a]`;
+ }
  const out=resolve(dir,'video.mp4'),temp=resolve(dir,'video-rendering.mp4');
  await run('ffmpeg',[...input,'-vf',`subtitles=filename='${escapeFilter(assFile)}'`,'-filter_complex',af,'-map','0:v','-map','[a]','-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-t',String(cursor),'-movflags','+faststart',temp]);
  const mechanicalQa=await validateMedia(temp);renameSync(temp,out);
@@ -126,9 +137,15 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  }
  const coverFile=resolve(dir,'cover.jpg');await run('ffmpeg',['-y','-ss','0.8','-i',out,'-frames:v','1','-q:v','3',coverFile],30000);
  const cover={file:'cover.jpg',sha256:hash(readFileSync(coverFile)),frameTime:0.8,width:1080,height:1920,style:'large-red-white-outline'};
+ if(generatedImages.length){const light=await run('ffmpeg',['-hide_banner','-i',coverFile,'-vf','signalstats,metadata=print:key=lavfi.signalstats.YAVG','-frames:v','1','-f','null','-'],30000);cover.meanLuma=Number(light.err.match(/lavfi.signalstats.YAVG=([\d.]+)/)?.[1]);assert(Number.isFinite(cover.meanLuma)&&cover.meanLuma>=85,'冒頭画像が暗いため投稿を保留します。');}
  const used=allAssets.filter(a=>scenes.some(s=>s.assetId===a.id));
  const manifest={cover,synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:nativeSound?'Original sound effects only; YouTube Shorts Add sound still required':'Original procedural composition generated locally; no third-party music',musicEvidence:{...soundtrack.metadata,mode:nativeSound?'shorts-library':'original',selectionStatus:nativeSound?'pending_native_selection':'original',choice:nativeSound?v.musicChoice||null:null,requestedTracks:nativeSound?(process.env.SHORTSLOOP_SHORTS_TRACKS||'').split(',').filter(Boolean):[],sha256:hash(soundtrack.bytes),createdAt:now()},visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom,timeline:caption.timeline,independentOfSceneCuts:true},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
  assert(!requiresExplanation(v)||manifest.explanationCount>0,'説明図がないため投稿を保留します。');
+ if(licensed){const {file,...evidence}=licensed;assert(licensedMusicValid(evidence),'フリーBGMの権利記録を確認できません。');manifest.music=`${licensed.title} / ${licensed.artist} (${licensed.license})`;manifest.musicEvidence={...evidence,mix:'BGM -31 LUFS before final voice mix',effectsSha256:hash(soundtrack.bytes)};}
+ manifest.generatedImageCount=generatedImages.filter(a=>scenes.some(s=>s.imageId===a.id)).length;
+ manifest.generatedImages=generatedImages.map(({file,...evidence})=>evidence);
+ manifest.generatedImageRatio=scenes.filter(s=>s.imageId).reduce((n,s)=>n+s.duration,0)/cursor;
+ if(manifest.generatedImageCount){manifest.visual='AI-generated illustrative images with pan/zoom + sourced explanatory diagrams';manifest.visualStyle='generated_images_diagrams';}
  writeFileSync(resolve(dir,'manifest.json'),JSON.stringify(manifest,null,2));
  if(!retainAudio)cleanRenderIntermediates(directory,v.id);
  return {videoFile:out,videoHash:manifest.sha256,duration:manifest.duration,segments,manifest,scenePlan:scenes,frameFiles};

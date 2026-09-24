@@ -113,10 +113,11 @@ export function scienceCardEvents(scene) {
 }
 export function sceneOverlayEvents(scene) {
  const {start:a,end:b}=scene;
- let out=scene.assetId?'':scienceCardEvents(scene);
+ let out=scene.assetId||scene.imageId?'':scienceCardEvents(scene);
  // Owner preference: large red headline with a white outline, separate from captions.
  if(scene.overlay)out+=event(a,b,'Label',`{\\an8\\pos(522,206)\\fs${scene.hook?144:88}\\1c&H3333EB&\\3c&HFFFFFF&\\bord${scene.hook?7:4}\\shad2\\fscx96\\fscy96\\t(0,180,\\fscx100\\fscy100)\\fad(0,50)}${wrapLabel(scene.overlay,scene.hook?9:12)}`,3);
  if(scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28}参考映像`,3);
+ if(scene.imageId)out+=event(a,b,'Meta',`{\\an7\\pos(96,408)\\fs28\\1c&H203040&\\3c&HFFFFFF&\\bord2}AI生成イメージ`,3);
  if(['slow','replay'].includes(scene.effect)&&scene.assetId)out+=event(a,b,'Meta',`{\\an7\\pos(96,455)}${scene.effect==='slow'?'SLOW ×0.72':'REPLAY'}`,3);
  if(scene.callout)out+=event(a+.25,Math.min(b,a+2.8),'Label',`{\\an8\\move(525,1280,525,1258,0,180)\\fs39\\1c&H60D8FF&\\bord3\\fad(80,80)}${wrapLabel(scene.callout,18)}`,3);
  return out;

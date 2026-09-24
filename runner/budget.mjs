@@ -19,7 +19,13 @@ export function budgetPolicy(env=process.env){
  const yenPerUsd=Math.max(200,positive(env.SHORTSLOOP_BUDGET_JPY_PER_USD,200));
  return {totalJpy,aiJpy,nonAiReserveJpy:totalJpy-aiJpy,yenPerUsd,aiUsd:aiJpy/yenPerUsd,scope:'ShortLOOP API requests only; hosting and other applications require provider limits'};
 }
-export function requestAllowance({kind,model,search=false,text=''}){
+export function requestAllowance({kind,model,search=false,text='',size,quality}){
+ if(kind==='image'&&model==='gpt-image-2'){
+  if(typeof text!=='string'||!text.length||Buffer.byteLength(text)>12000||size!=='1024x1536'||quality!=='medium')throw error('BUDGET_INPUT','画像生成の枚数・サイズ・品質・入力制限を確認してください。');
+  // Official standard prices checked 2026-09-24. One medium portrait (~$0.041)
+  // plus a bounded text prompt; unknown outcomes retain the entire reservation.
+  return {kind,model,size,quality,imageCount:1,reservedUsd:.25};
+ }
  if(kind==='response'&&TEXT_MODELS.has(model)){
   // Reserve the full model context/output allowance for every bounded search round.
   const toolCalls=search?MAX_SEARCH_CALLS:0;
@@ -92,6 +98,11 @@ export function settleSpend(s,reservation,{usage,searchCalls=0,rejected=false}={
  if(rejected){r.bookedUsd=0;r.status='rejected';return {estimatedUsd:0,bookedUsd:0};}
  if(r.kind==='response'&&Number.isSafeInteger(usage?.input_tokens)&&usage.input_tokens>=0&&Number.isSafeInteger(usage?.output_tokens)&&usage.output_tokens>=0&&Number.isSafeInteger(searchCalls)&&searchCalls>=0){
   estimate=round((usage.input_tokens*.25+usage.output_tokens*2)/1e6+searchCalls*.01);
+ }else if(r.kind==='image'&&Number.isSafeInteger(usage?.input_tokens)&&usage.input_tokens>=0&&Number.isSafeInteger(usage?.output_tokens)&&usage.output_tokens>=0){
+  // Charge all input at the higher image-input rate if token details are absent.
+  const textTokens=usage.input_tokens_details?.text_tokens;
+  const text=Number.isSafeInteger(textTokens)&&textTokens>=0&&textTokens<=usage.input_tokens?textTokens:0;
+  estimate=round((text*2.5+(usage.input_tokens-text)*4+usage.output_tokens*15)/1e6);
  }else if(r.kind==='speech'&&['tts-1','tts-1-hd'].includes(r.model))estimate=r.reservedUsd;
  if(r.kind==='response')r.searchCalls=searchCalls;
  r.bookedUsd=estimate??r.reservedUsd;r.status=estimate===null?'conservative':'estimated';r.estimatedUsd=estimate;

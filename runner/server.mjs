@@ -1,5 +1,5 @@
 import {validationFile} from './validation-files.mjs';
-import {reviewTarget,reviewFile,reviewPlan} from './review-files.mjs';
+import {reviewTarget,reviewFile,reviewPlan,reviewVideoId} from './review-files.mjs';
 import {startPreparation,resumePreparedVisualAfterStockConnection} from './preparation.mjs';
 import {configureConnections} from './vault.mjs';
 import {pauseAutomation} from '../lib/automation.mjs';
@@ -32,7 +32,7 @@ const server=createServer(async(req,res)=>{
  // Only a data-free GET health check is public; OAuth returns through the private Site.
  const health=req.method==='GET'&&url.pathname==='/healthz';
  const validationAuth=req.method==='GET'&&url.pathname.startsWith('/api/validation/')&&process.env.SHORTSLOOP_VALIDATION_TOKEN&&Date.parse(process.env.SHORTSLOOP_VALIDATION_ACCESS_EXPIRES)>Date.now()&&secureEqual(req.headers.authorization,`Bearer ${process.env.SHORTSLOOP_VALIDATION_TOKEN}`);
- const review=reviewTarget(url.pathname,process.env.SHORTSLOOP_REVIEW_VIDEO_ID);
+ const review=reviewTarget(url.pathname,reviewVideoId(store.read().live.videos));
  const reviewAuth=req.method==='GET'&&review&&process.env.SHORTSLOOP_REVIEW_TOKEN?.length>=32&&Date.parse(process.env.SHORTSLOOP_REVIEW_ACCESS_EXPIRES)>Date.now()&&secureEqual(req.headers.authorization,`Bearer ${process.env.SHORTSLOOP_REVIEW_TOKEN}`);
  if(!health&&!auth&&!validationAuth&&!reviewAuth&&(remote||url.pathname.startsWith('/api/')&&!local)){res.writeHead(401,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify({error:'認証が必要です。'}));return;}
  if(req.method!=='GET'&&!auth){const origin=req.headers.origin;const expected=`http://${req.headers.host}`;if(origin!==expected){res.writeHead(403);res.end('Origin rejected');return;}}

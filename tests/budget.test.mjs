@@ -79,6 +79,12 @@ test('unknown models and oversized speech stop before network use',async t=>{
  ai.model='unpriced-model';await assert.rejects(ai.response('test'),{code:'BUDGET_PRICING_UNKNOWN'});
  await assert.rejects(ai.speech('あ'.repeat(151),join(dir,'voice.wav')),{code:'BUDGET_INPUT'});assert.equal(calls,0);assert.equal(store.read().spendGuard,undefined);
 });
+test('image API sends one bounded portrait and persists its real usage in the existing ledger',async t=>{
+ const {ai,dir,store}=setup(t);let body;
+ const bytes=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(120)]);
+ t.mock.method(globalThis,'fetch',async(u,o)=>{assert.equal(u,'https://api.openai.com/v1/images/generations');body=JSON.parse(o.body);return Response.json({data:[{b64_json:bytes.toString('base64')}],usage:{input_tokens:1000,input_tokens_details:{text_tokens:1000},output_tokens:3000}});});
+ await ai.image('bright cloud',join(dir,'image.png'));assert.equal(body.n,1);assert.equal(body.quality,'medium');assert.equal(body.size,'1024x1536');assert.equal(body.output_format,'png');assert.equal(store.read().usage.aiCalls,1);assert.equal(store.read().costLedger[0].managedUsd,.0475);
+});
 test('successful responses without usage and HTTP 503 outcomes keep their full allowance',async t=>{
  const {store,ai}=setup(t);let calls=0;
  t.mock.method(globalThis,'fetch',async()=>++calls===1?Response.json({output:[{type:'message',content:[{type:'output_text',text:'{}'}]}]}):Response.json({error:{code:'server_error'}},{status:503}));

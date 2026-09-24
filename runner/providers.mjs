@@ -69,6 +69,16 @@ export class OpenAI {
   const sources=(response.output||[]).flatMap(x=>[...(x.action?.sources||[]),...(x.content||[]).flatMap(y=>y.annotations||[])]).filter(x=>x.url).map(x=>x.url);
   return {value,sources,responseId:response.id};
  }
+ async image(prompt,file){
+  const model=process.env.OPENAI_IMAGE_MODEL||'gpt-image-2',size='1024x1536',quality='medium';
+  const reservation=this.budget({kind:'image',model,text:prompt,size,quality});let response;
+  try{response=await jsonFetch('https://api.openai.com/v1/images/generations',{method:'POST',signal:AbortSignal.timeout(240000),headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify({model,prompt,n:1,size,quality,output_format:'png'})});}catch(e){this.rejectRequest(reservation,e);throw e;}
+  this.recordUsage(reservation,{usage:response.usage});
+  assert(response.data?.length===1&&typeof response.data[0].b64_json==='string'&&response.data[0].b64_json.length<28000000,'画像生成結果を確認できません。');
+  const bytes=Buffer.from(response.data[0].b64_json,'base64');
+  assert(bytes.length>100&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),'生成画像がPNG形式ではありません。');
+  writeFileSync(file,bytes);return {model,size,quality,requestId:response.id||null};
+ }
  async speech(text,file,speed=1.04,role='body'){
   const model=process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts';
   const instructions=`自然で親しみやすい日本語の科学Shorts。明瞭な発音と自然な間。説明は落ち着いて、疑問や意外な点には控えめな驚き。ロボット的な抑揚や過剰な芝居、急な早口は避ける。声量と声質を前後の文で統一し、語尾を明瞭に。台本内の短いツッコミは親しみのある軽い驚きで、説明に戻る際は落ち着いた調子。入力にないセリフ・笑い声・効果音は足さない。数式・化学式・英字は日本語として自然に読む。${role==='hook'?'冒頭の短い問いは興味を引く調子。':'本文は仕組みを理解できるテンポ。'}`;

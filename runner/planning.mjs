@@ -4,10 +4,19 @@ import {assert} from '../lib/core.mjs';
 
 export function sourceUrlKey(value){const u=new URL(value);u.hash='';for(const k of [...u.searchParams.keys()])if(/^utm_/i.test(k)||['gclid','fbclid'].includes(k))u.searchParams.delete(k);u.searchParams.sort();return u.href.replace(/\/$/,'');}
 
+export function validPlanShape(x){return !!x&&typeof x.title==='string'&&x.title.length>0&&x.title.length<=100&&!/[<>]/.test(x.title)&&Array.isArray(x.segments)&&x.segments.length>=4&&x.segments.length<=10&&x.segments.every(y=>y&&typeof y.text==='string'&&y.text.length>0&&y.text.length<=150&&Array.isArray(y.sourceIds));}
+// Repair formatting once, without permitting replacement evidence or a risk override.
+export async function repairPlanShape(ai,result){
+ if(validPlanShape(result.value)||result.value?.risk!=='none')return result;
+ const original=result.value;
+ const q=await ai.response(`台本JSONの形式だけを1回修正。新しい事実・URL・出典IDを作らない。titleは1〜100文字。segmentsは6〜8件、各textは1〜150文字の自然な日本語、roleはhook/body/answer/cta、sourceIdsは必ず配列。根拠不明の主張を補完しない。冒頭8〜12文字、全体160〜240文字。${VISUAL_SCHEMA}。JSONは元と同じルート構造。元データ=${JSON.stringify(original)}`);
+ return {...result,value:{...q.value,genre:original.genre,hook:original.hook,structure:original.structure,risk:q.value?.risk==='none'?'none':q.value?.risk||'unverified',sources:original.sources}};
+}
+
 // A model-suggested citation is not evidence. Read its trusted public primary page,
 // rebuild once from the retrieved text, then require the independent fact verifier.
 export async function groundPlan(ai,result,{minSources=1,fetchSource=sourceText,progress=()=>{}}={}){
- const selected=Array.isArray(result.value.sources)?result.value.sources:[],urls=[...new Set([...selected.map(s=>s.url),...(result.sources||[])].filter(trustedSource))].slice(0,4),evidence=[];
+ const selected=Array.isArray(result.value.sources)?result.value.sources:[],urls=[...new Set([...selected.map(s=>s?.url),...(result.sources||[])].filter(trustedSource))].slice(0,4),evidence=[];
  for(const url of urls){
   try{const source=await fetchSource(url);assert(trustedSource(source.url)&&source.sha256&&source.text?.length>600,'一次資料の取得証跡が不完全です。');if(evidence.some(e=>sourceUrlKey(e.url)===sourceUrlKey(source.url)))continue;evidence.push({...source,id:'s'+(evidence.length+1),discovery:'retrieved-primary-evidence'});progress('source-retrieved',{url:source.url});}catch(e){progress('source-unavailable',{url,reason:e.message});}
   if(evidence.length>=Math.max(minSources,Math.min(2,selected.length)))break;
