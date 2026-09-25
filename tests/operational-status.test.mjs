@@ -21,3 +21,10 @@ test('only measured script failures allow presentation repair; facts and rights 
 test('every diagram palette retains bright background luminance',()=>{
  for(let variant=0;variant<3;variant++){const hex=sceneBackground(variant).slice(2),[r,g,b]=[0,2,4].map(i=>parseInt(hex.slice(i,i+2),16));assert(.2126*r+.7152*g+.0722*b>220);}
 });
+test('background presentation rejection preserves manual and OAuth pauses',()=>{
+ for(const pause of [{userPaused:true,phase:'paused',reason:'一時停止中'},{youtubeReconnectRequired:true,phase:'attention',reason:'Google再認可待ち'}]){
+  const s=initialState();s.automation={...pause};
+  pauseAutomation(s,'字幕を読む時間が不足しています。台本を短くしてください。');
+  assert.equal(s.settings.paused,true);assert.deepEqual(s.automation,pause);
+ }
+});
