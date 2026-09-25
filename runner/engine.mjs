@@ -1,4 +1,6 @@
 import {requeueOutdatedMedia} from './media-policy.mjs';
+import {recoverExpiredSchedules} from './queue-recovery.mjs';
+import {presentationFailure} from '../lib/render-failures.mjs';
 import {FACT_REVIEW_INSTRUCTIONS,FACT_REVIEW_SCHEMA,factReviewPass,UNVERIFIED_FACT_RISK,canRepairVisualFacts,diagramRepairSchema} from './fact-review.mjs';
 import {musicPreferences,musicCatalog,selectMusic} from '../lib/shorts-music.mjs';
 import {spendingSummary,nextBudgetMonth} from './budget.mjs';
@@ -228,10 +230,11 @@ export class Engine {
    if(v.contentType==='B')assert(assets.length>0,'TYPE Bの使用素材の権利が未確認です。');
    if(!lightweight&&musicMode()==='licensed')await prepareLicensedMusic(this.store.directory);
    const generatedImages=lightweight?[]:await prepareGeneratedArt(v,{directory:this.store.directory,ai:this.ai,progress:(stage,extra)=>this.progress(stage,id,extra)});
-   let result,visualQa,originality=null;
+   let result,visualQa,originality=null,lightingRepair=false;
    const limit=lightweight?0:Math.max(0,Math.min(2,Number(process.env.SHORTSLOOP_VISUAL_REPAIRS??2)));
    for(let attempt=0;attempt<=limit;attempt++){
-    result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,generatedImages,repair:attempt,repairIssues:visualQa?.issues||[],retainAudio:true});
+    try{result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,generatedImages,repair:attempt,repairIssues:[...(visualQa?.issues||[]),...(lightingRepair?['lighting']:[])],retainAudio:true});}
+    catch(e){if(e.code!=='VISUAL_LIGHTING'||attempt===limit)throw e;lightingRepair=true;this.progress('lighting-repair',id,{attempt:attempt+1});continue;}
     this.progress('render-encoded',id,{attempt,duration:result.duration,scenes:result.manifest.sceneCount,diagrams:result.manifest.explanationCount,generatedImages:result.manifest.generatedImageCount,music:result.manifest.music,cover:result.manifest.cover,narration:result.manifest.narrationVerified,mechanicalQa:result.manifest.mechanicalQa});
     visualQa=lightweight?{passed:false,reason:'音声なしの軽量プレビュー'}:await this.reviewVisual(v,result);
     this.progress('visual-review',id,{review:visualQa});
@@ -248,7 +251,14 @@ export class Engine {
     else throw Error(originality?.copyrightRisk<=15&&originality?.reusedRisk<=25?'解説・編集の付加価値が不足したため、この動画を見送ります。':'独自性・解説価値・再利用リスクの審査で停止しました。');
    }
    cleanRenderIntermediates(this.store.directory,id);
-  }catch(e){this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.status='blocked';x.qa.visual=x.visualQa?.passed?'passed':'failed';x.error=e.message;});throw e;}
+  }catch(e){
+   const current=this.store.read().live.videos.find(x=>x.id===id);
+   if(!preview&&!lightweight&&presentationFailure(e)&&current?.qa?.facts==='passed'&&!current.risk&&!current.youtubeId&&!current.uploadIntent&&!current.uploadSession&&(current.presentationRepairAttempts||0)<2){
+    this.progress('measured-presentation-repair',id,{reason:e.message});
+    await this.polishPresentation(id);return this.render(id,preview,repaired,lightweight);
+   }
+   this.store.update(s=>{const x=s.live.videos.find(x=>x.id===id);x.status='blocked';x.qa.visual=x.visualQa?.passed?'passed':'failed';x.error=e.message;});throw e;
+  }
  }
  async upload(id,automatic=false){
   this.activeVideoId=id;
@@ -390,6 +400,7 @@ export class Engine {
    if(pace.canGenerate&&this.ai.key){this.store.update(s=>recordProductionAttempt(s,pace));await this.generate(1);}
   }else if(s.lastPlanDay!==day&&!s.live.videos.some(v=>['draft','rendering','review','approved','uploading'].includes(v.status))){const made=s.live.videos.filter(v=>dayOf(v.createdAt)===day&&!['rejected','blocked'].includes(v.status)).length;const remaining=Math.max(0,s.settings.dailyLimit-made);if(remaining>0){if(this.ai.key)await this.generate(1);else this.store.update(s=>plan(s.live,1));}if(remaining<=1)this.store.update(s=>{s.lastPlanDay=day;});}
   for(const v of this.store.read().live.videos.filter(v=>v.status==='draft')){if(this.store.read().settings.paused)return;await this.render(v.id);}
+  this.store.update(s=>recoverExpiredSchedules(s,(state,v)=>this.reserveSchedule(state,v)));
   s=this.store.read();if(s.settings.mode==='auto')this.store.update(s=>{for(const v of s.live.videos.filter(x=>x.status==='review')){if(!blockers(v,true).length){v.status='approved';v.approvedRevision=v.revision;v.approvedDigest=digestable(v);v.approvedAt=now();v.autoApproved=true;}}});
   s=this.store.read();const delivered=(s.deliveries||[]).filter(x=>x.day===day).length;const timePattern=s.settings.derivedApproved?s.live.memory.patterns.find(p=>p.dimension==='hour'&&p.effect>=8&&p.n>=10):null;const times=timePattern?[...new Set([timePattern.value,...s.settings.times])].slice(0,s.settings.dailyLimit).sort():s.settings.times;const due=times.filter(t=>t<=hour).length;
   for(const v of s.live.videos.filter(x=>x.status==='approved'&&x.privacy===s.settings.privacy)){if(this.store.read().settings.paused)return;if(v.publishAt){if(Date.parse(v.publishAt)<=Date.now()+60000)throw Error('承認された予約日時を過ぎました。日時の再設定と再承認が必要です。');if(Date.parse(v.publishAt)<Date.now()+86400000)await this.upload(v.id,true);}else if(v.plannedAt?Date.parse(v.plannedAt)<=Date.now():due>delivered){await this.upload(v.id,true);break;}}
