@@ -1,4 +1,5 @@
 import {promoteAcceptedValidation} from './promote-validation.mjs';
+import {operationalStatus} from './operational-status.mjs';
 import {validationFile} from './validation-files.mjs';
 import {reviewTarget,reviewFile,reviewPlan,reviewVideoId} from './review-files.mjs';
 import {startPreparation,resumePreparedVisualAfterStockConnection} from './preparation.mjs';
@@ -22,7 +23,9 @@ const store=new Store(DATA),engine=new Engine(store),oauth=new OAuthFlow(store.d
 store.update(s=>{for(const v of s.live.videos){if(v.status==='uploading'){if(v.uploadSession)v.status='approved';else{v.status='blocked';v.error='前回の送信結果を確認する必要があります。';pauseAutomation(s,v.error);}}if(v.status==='rendering'&&!v.youtubeId&&!v.uploadIntent){v.status='draft';v.error='再起動で中断した制作を、保存済み音声から再試行します。';v.approvedRevision=null;delete v.approvedDigest;}}});
 engine.housekeep();
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.mp4':'video/mp4','.json':'application/json'};
-const pump=()=>{if(engine.running)return;if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)}))return;if(process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
+let lastStatusAt=0;
+const reportStatus=()=>{if(Date.now()-lastStatusAt<900000)return;console.log('ShortLOOP status: '+JSON.stringify(operationalStatus(store.read(),engine.capabilities())));lastStatusAt=Date.now();};
+const pump=()=>{reportStatus();if(engine.running)return;if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)}))return;if(process.env.SHORTSLOOP_PUBLISH_HOLD==='true')return;engine.tryAutoStart();if(!store.read().settings.paused)engine.job('tick').catch(()=>{});else engine.housekeep();};
 const secureEqual=(a,b)=>{const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y);};
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');
@@ -77,6 +80,7 @@ const server=createServer(async(req,res)=>{
 server.listen(PORT,HOST,()=>{
  try{const queued=promoteAcceptedValidation(engine,process.env.SHORTSLOOP_PROMOTE_VALIDATION);if(queued)console.log('Prepared publication: '+JSON.stringify(queued));}catch(e){console.error('Prepared publication held:',e.message);}
  console.log(`Shorts Loop: http://localhost:${PORT}`);
+ reportStatus();
  console.log('ShortLOOP readiness: '+JSON.stringify({...engine.capabilities(),storage:true,paused:store.read().settings.paused,privacy:store.read().settings.privacy,mode:store.read().settings.mode,publicUploadRequested:!!store.read().automation?.publicUploadRequested,phase:store.read().automation?.phase,stopReason:store.read().automation?.reason||null,retryAt:store.read().automation?.retryAt||null}));
  if(startPreparation(engine,{onSettled:()=>queueMicrotask(pump)})){
   console.log('Production preparation queued; waiting for the current worker when necessary.');

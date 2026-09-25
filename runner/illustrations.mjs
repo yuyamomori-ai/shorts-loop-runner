@@ -13,7 +13,7 @@ export function illustrationKind(scene) {
 
 export function illustrationEvents(scene,{event,vector,rect,circle,wrapLabel}) {
  const kind=illustrationKind(scene);if(!kind)return null;
- const a=scene.start,b=scene.end,light=scene.variant!==1,ink=light?'382718':'FFFFFF',muted=light?'BFB29D':'83644C',paper=light?'FFFFFF':'604526',blue='EAB653',red='5562F3',gold='58D9FF';
+ const a=scene.start,b=scene.end,ink='382718',muted='BFB29D',paper='FFFFFF',blue='EAB653',red='5562F3',gold='58D9FF';
  let out='';
  const draw=(path,color,delay=0,motion='',layer=1)=>{out+=event(a+Math.min(delay,(b-a)*.5),b,'Label',vector(path,color,'00',motion),layer);};
  const text=(str,x,y,size=56,color=ink,delay=0,width=780)=>{out+=event(a+Math.min(delay,(b-a)*.5),b,'Label',`{\\pos(${x},${y})\\fs${size}\\bord0\\1c&H${color}&\\fad(100,80)}${wrapLabel(str,Math.max(3,Math.floor(width/size)))}`,4);};
@@ -59,7 +59,7 @@ export function illustrationEvents(scene,{event,vector,rect,circle,wrapLabel}) {
   }else labels.forEach((str,i)=>{
    const y=566+i*(n===3?239:366),delay=i*.16;
    draw(rect(122,y-48,48,98),i===step?red:blue,delay);text(String(i+1),146,y,49,'FFFFFF',delay);
-   box(210,y-75,688,160,i===step?paper:(light?'E6DFCF':'4D351E'),delay);
+   box(210,y-75,688,160,i===step?paper:'E6DFCF',delay);
    if(/映像|動画/.test(str))film(232,y-44,126,94,delay);
    else if(/誤|警告/.test(str))warning(296,y,53,delay);
    else{ring(283,y-9,42,blue,delay);draw('m 310 '+(y+21)+' l 343 '+(y+55)+' 331 '+(y+67)+' 299 '+(y+32),blue,delay);}

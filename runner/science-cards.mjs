@@ -23,8 +23,8 @@ function symbol(label,x,y,r,color) {
  else paths=[rect(x-r*.64,y-r,r*1.28,r*2),rect(x-r*.38,y-r*.45,r*.76,7),rect(x-r*.38,y-r*.05,r*.76,7),rect(x-r*.38,y+r*.35,r*.5,7)];
  return paths.map(path=>vector(path,color,'00','\\fad(100,0)\\1a&HFF&\\3c&H'+color+'&').replace('\\bord0','\\bord5'));
 }
-const palettes=[{panel:'F7EFE7',ink:'3E2815',accent:'4045ED',soft:'DFD0C1'},{panel:'48361E',ink:'FFFFFF',accent:'60D8FF',soft:'6A5135'},{panel:'E0F4F9',ink:'342A19',accent:'9A5835',soft:'B9DEEA'}];
-export const sceneBackground=variant=>['0xe7eff7','0x182b3b','0xf9f4e0'][(variant||0)%3];
+const palettes=[{panel:'F7EFE7',ink:'3E2815',accent:'4045ED',soft:'DFD0C1'},{panel:'F4FFF0',ink:'382718',accent:'986F18',soft:'D9EAC8'},{panel:'E0F4F9',ink:'342A19',accent:'9A5835',soft:'B9DEEA'}];
+export const sceneBackground=variant=>['0xe7eff7','0xf0fff4','0xf9f4e0'][(variant||0)%3];
 function animateGraphics(out,scene) {
  if(scene.effect==='pan')return out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>`\\move(${Number(x)-12},${y},${Number(x)+12},${y})`);
  if(scene.effect==='zoom')return out.replace(/\\pos\(([-\d.]+),([-\d.]+)\)/g,(_,x,y)=>{
@@ -71,7 +71,7 @@ export function scienceCardEvents(scene) {
   const w=800/Math.max(1,n);
   labels.forEach((label,i)=>{
    const x=130+w*(i+.5);out+=shape(rect(x-w/2+8,1072,w-16,85),i===active?p.accent:p.soft);
-   out+=text(label,x,1115,n===3?27:33,i===active?((scene.variant||0)%3===1?'342A19':'FFFFFF'):p.ink,a,w-30);
+   out+=text(label,x,1115,n===3?27:33,i===active?'FFFFFF':p.ink,a,w-30);
    if(type==='process'&&i<n-1)out+=arrow(x+w/2,1040);
   });
  }else if(type==='process'&&layout==='overview') {

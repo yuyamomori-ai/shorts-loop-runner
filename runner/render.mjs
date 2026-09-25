@@ -46,6 +46,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  assert(/^[a-zA-Z0-9-]{1,80}$/.test(v.id),'動画IDが不正です。');
  assert(!lightweight||preview,'軽量プレビューは投稿用に使えません。');
  assert(lightweight||ai?.key||process.env.VOICEVOX_URL,'投稿用動画にはAIナレーションが必要です。');
+ assert(preview||v.synthetic||['licensed','shorts-library'].includes(musicMode()),'投稿用BGMは権利確認済みのフリーBGMを使用してください。');
  const font=englishTest?'DejaVu Sans':process.env.CAPTION_FONT||'Noto Sans CJK JP';
  const fontCheck=await run('fc-match',[font],10000).catch(()=>({out:''}));
  if(!englishTest)assert(/NotoSansCJK|Noto Sans CJK|NotoSansJP|YuGoth|Meiryo|msgothic|ipa/i.test(fontCheck.out)||process.env.CAPTION_FONT_VERIFIED==='true','日本語フォントを確認できません。');
@@ -110,8 +111,9 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
    input.push('-f','lavfi','-i',`color=c=${sceneBackground(scene.variant)}:s=1080x1920:r=30:d=${scene.duration}`);
    filter=`drawgrid=w=120:h=120:t=1:c=0x58819b@0.08,setsar=1`;
   }
+  if(art&&repairIssues.includes('lighting'))filter+=`,eq=gamma=${1+Math.min(repair,2)*.12}:brightness=${Math.min(repair,2)*.035}`;
   if(a||art)filter+=`,drawbox=x=110:y=1330:w=844:h=200:color=black@0.72:t=fill`;
-  else if(scene.variant!==1)filter+=`,drawbox=x=110:y=1330:w=844:h=200:color=0x102030@0.82:t=fill`;
+  else filter+=`,drawbox=x=110:y=1330:w=844:h=200:color=0x102030@0.82:t=fill`;
   filter+=',format=yuv420p';
   await run('ffmpeg',[...input,'-an','-vf',filter,'-r','30','-t',String(scene.duration),'-c:v','libx264','-threads',String(renderThreads),'-preset','veryfast','-crf','23','-pix_fmt','yuv420p',file]);sceneFiles.push(file);
  }
@@ -138,7 +140,7 @@ export async function renderVideo(v,{directory,ai,preview=false,lightweight=fals
  }
  const coverFile=resolve(dir,'cover.jpg');await run('ffmpeg',['-y','-ss','0.8','-i',out,'-frames:v','1','-q:v','3',coverFile],30000);
  const cover={file:'cover.jpg',sha256:hash(readFileSync(coverFile)),frameTime:0.8,width:1080,height:1920,style:'large-red-white-outline'};
- if(generatedImages.length){const light=await run('ffmpeg',['-hide_banner','-i',coverFile,'-vf','signalstats,metadata=print:key=lavfi.signalstats.YAVG','-frames:v','1','-f','null','-'],30000);cover.meanLuma=Number(light.err.match(/lavfi.signalstats.YAVG=([\d.]+)/)?.[1]);assert(Number.isFinite(cover.meanLuma)&&cover.meanLuma>=85,'冒頭画像が暗いため投稿を保留します。');}
+ if(generatedImages.length){const light=await run('ffmpeg',['-hide_banner','-i',coverFile,'-vf','signalstats,metadata=print:key=lavfi.signalstats.YAVG','-frames:v','1','-f','null','-'],30000);cover.meanLuma=Number(light.err.match(/lavfi.signalstats.YAVG=([\d.]+)/)?.[1]);if(!Number.isFinite(cover.meanLuma)||cover.meanLuma<85)throw Object.assign(Error('冒頭画像が暗いため投稿を保留します。'),{code:'VISUAL_LIGHTING'});cover.lightingRepairs=repairIssues.includes('lighting')?repair:0;}
  const used=allAssets.filter(a=>scenes.some(s=>s.assetId===a.id));
  const manifest={cover,synthetic:!!v.synthetic,visualVersion:VISUAL_VERSION,createdAt:now(),duration:mechanicalQa.duration,width:1080,height:1920,codec:'h264',sha256:hash(readFileSync(out)),narration:provider,narrationVerified:!lightweight&&speechEvidence.length===segments.length,audioStream:true,speech:speechEvidence,credit:lightweight?'No narration (lightweight preview)':provider==='VOICEVOX'?process.env.VOICEVOX_CREDIT:'AI-generated narration (OpenAI)',music:nativeSound?'Original sound effects only; YouTube Shorts Add sound still required':'Original procedural composition generated locally; no third-party music',musicEvidence:{...soundtrack.metadata,mode:nativeSound?'shorts-library':'original',selectionStatus:nativeSound?'pending_native_selection':'original',choice:nativeSound?v.musicChoice||null:null,requestedTracks:nativeSound?(process.env.SHORTSLOOP_SHORTS_TRACKS||'').split(',').filter(Boolean):[],sha256:hash(soundtrack.bytes),createdAt:now()},visual:used.length?'Licensed illustrative footage + original sourced explanatory diagrams':'Original animated sourced explanatory diagrams',...features,assetCount:used.length,assets:used.map(a=>({id:a.id,provider:a.provider,sourceUrl:a.sourceUrl,license:a.license,commercialAllowed:a.commercialAllowed,modificationAllowed:a.modificationAllowed,credit:a.creditText,acquiredAt:a.acquiredAt,rightsCheckedAt:a.rightsCheckedAt,sha256:a.sha256})),captionTiming:lightweight?'Estimated preview timing':'Measured per-sentence narration with short proportional caption cards',captions:{size:caption.size,maxLines:caption.maxLines,minSeconds:caption.minSeconds,bottom:caption.bottom,timeline:caption.timeline,independentOfSceneCuts:true},preview,lightweight,mechanicalQa,peakDb:mechanicalQa.peak,frameTimes,frames:frameFiles.map(x=>x.split(/[\\/]/).pop())};
  assert(!requiresExplanation(v)||manifest.explanationCount>0,'説明図がないため投稿を保留します。');

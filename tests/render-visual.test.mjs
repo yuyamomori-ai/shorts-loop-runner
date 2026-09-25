@@ -18,7 +18,7 @@ test('multi-asset 1080x1920 encode mixes timed audio, original music, captions a
  }
  const v={id:'synthetic-encoder-test',synthetic:true,contentType:'A',genre:'Science',captionStyle:'clean',segmentAssets:{0:['source-0'],2:['source-1'],4:['source-0']},segments:['Where do bubbles come from?','Here is a schematic.','Pressure changes.','Gas leaves the liquid.','Watch the illustrative motion.','That is the basic idea.'].map((text,i)=>({text,role:i?'body':'hook',sourceIds:['s1'],visualQuery:'water',visualType:i%2?'diagram':'real_footage',effect:['zoom','pan','slow','pan','replay','zoom'][i],overlay:i?'Pressure and gas':'Look at the bubbles',...(i%2?{diagramSpec:{type:i===3?'comparison':'process',labels:['Pressure','Liquid','Bubbles'],sourceIds:['s1']}}:{})}))};
  let calls=0;
- const ai={key:'test-fixture-only',speech:async(text,file)=>{const seconds=calls++===0?1.85:4.4;await run('ffmpeg',['-y','-f','lavfi','-i',`sine=frequency=440:sample_rate=24000:duration=${seconds}`,'-c:a','pcm_s16le','-f','wav',file]);}};
+ const ai={key:'test-fixture-only',speech:async(text,file)=>{const seconds=calls++===0?2.6:4.4;await run('ffmpeg',['-y','-f','lavfi','-i',`sine=frequency=440:sample_rate=24000:duration=${seconds}`,'-c:a','pcm_s16le','-f','wav',file]);}};
  const r=await renderVideo(v,{directory,ai,assets,englishTest:true,retainAudio:true});
  const p=await probe(r.videoFile);
  assert.equal(p.streams.find(x=>x.codec_type==='video').codec_name,'h264');assert.equal(r.manifest.assetCount,2);assert(r.manifest.explanationCount>0);assert(r.manifest.mechanicalQa.passed);assert(r.scenePlan.length>=8);assert(r.manifest.synthetic);assert.equal(calls,6);
