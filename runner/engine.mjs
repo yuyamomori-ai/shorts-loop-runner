@@ -231,7 +231,7 @@ export class Engine {
    if(v.contentType==='B')assert(assets.length>0,'TYPE Bの使用素材の権利が未確認です。');
    if(!lightweight&&musicMode()==='licensed')await prepareLicensedMusic(this.store.directory);
    const generatedImages=lightweight?[]:await prepareGeneratedArt(v,{directory:this.store.directory,ai:this.ai,progress:(stage,extra)=>this.progress(stage,id,extra)});
-   let result,visualQa,originality=null,lightingRepair=false;
+   let result,visualQa=repairableVisualReview(v.visualQa)?v.visualQa:null,originality=null,lightingRepair=false;
    const limit=lightweight?0:Math.max(0,Math.min(2,Number(process.env.SHORTSLOOP_VISUAL_REPAIRS??2)));
    for(let attempt=0;attempt<=limit;attempt++){
     try{result=await renderVideo(v,{directory:this.store.directory,ai:this.ai,preview,lightweight,assets,generatedImages,repair:attempt,repairIssues:[...(visualQa?.issues||[]),...(lightingRepair?['lighting']:[])],retainAudio:true});}

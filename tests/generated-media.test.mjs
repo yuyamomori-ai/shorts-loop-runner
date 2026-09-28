@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {initialState} from '../lib/core.mjs';
 import {visualClaims} from '../lib/visual.mjs';
 import {hash} from '../runner/providers.mjs';
-import {captionChunks,captionLines,captionEvents} from '../runner/science-cards.mjs';
+import {captionChunks,captionLines,captionEvents,captionPresentation} from '../runner/science-cards.mjs';
 import {reserveSpend,settleSpend,spendingSummary} from '../runner/budget.mjs';
 import {prepareGeneratedArt} from '../runner/generated-art.mjs';
 import {buildScenePlan,sceneFeatures} from '../runner/visual-plan.mjs';
@@ -46,4 +46,21 @@ test('caption timing follows phrase length and keeps a short question separate f
  const captions=captionEvents([{text,start:0,end:9}]);
  assert.equal(captions.timeline[0].start,0);assert.equal(captions.timeline.at(-1).end,9);
  assert(captions.timeline[0].end<4.5);assert.equal(captions.timeline[0].end,captions.timeline[1].start);
+});
+
+test('visual feedback changes image/card composition and the opening cut while preserving evidence',()=>{
+ const v=video(),segments=v.segments.map((s,i)=>({...s,start:i*4,end:(i+1)*4})),images=[{id:'image-0'},{id:'image-1'}];
+ const before=JSON.stringify(segments),base=buildScenePlan(v,segments,[],{generatedImages:images});
+ const fixed=buildScenePlan(v,segments,[],{generatedImages:images,repair:1,repairIssues:['scene_variety','hook','explanation']});
+ assert.equal(JSON.stringify(segments),before);assert.equal(fixed[0].end,1);assert.equal(fixed[1].start,1);assert(fixed[1].hookDetail);
+ assert.equal(fixed.at(-1).end,24);assert(fixed.every((s,i)=>!i||Math.abs(s.start-fixed[i-1].end)<.001));
+ const diagram=fixed.find(s=>s.segmentIndex===2&&s.diagramSpec);assert(diagram);assert.deepEqual(diagram.diagramSpec.labels,segments[2].diagramSpec.labels);assert.deepEqual(diagram.sourceIds,['s1']);
+ assert.equal(new Set(fixed.map(s=>s.imageId).filter(Boolean)).size,2);assert(fixed.some(s=>s.segmentIndex===2&&s.imageId));assert.notDeepEqual(fixed.map(s=>s.visualType),base.map(s=>s.visualType));
+});
+test('caption repair reduces its footprint without speeding up or deleting words',()=>{
+ const base=captionPresentation('bold'),fixed=captionPresentation('bold',['captions']);
+ assert(fixed.size>=56&&fixed.size<base.size);assert(fixed.backdrop.height<base.backdrop.height);assert(fixed.backdrop.opacity<base.backdrop.opacity);
+ const s=[{text:'中央値と平均は別の値です。研究条件を確認します。',start:0,end:8}];
+ assert.deepEqual(captionEvents(s,fixed).timeline,captionEvents(s,base).timeline);
+ assert(fixed.backdrop.y<1490&&fixed.backdrop.y+fixed.backdrop.height>1490);
 });

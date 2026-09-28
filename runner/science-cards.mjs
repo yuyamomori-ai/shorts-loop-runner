@@ -151,6 +151,10 @@ export function captionLines(value,maxChars=14){
  return chars.slice(0,end).join('')+'\\N'+chars.slice(end).join('');
 }
 
+export function captionPresentation(style,issues=[]) {
+ const repaired=issues.includes('captions');
+ return {size:repaired?56:style==='bold'?60:58,backdrop:{y:repaired?1350:1330,height:repaired?170:200,opacity:repaired ? .58 : .72}};
+}
 export function captionEvents(segments,{size=52}={}) {
  let out='',minSeconds=Infinity,totalChars=0;const timeline=[];
  for(const s of segments) {

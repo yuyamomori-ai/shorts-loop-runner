@@ -10,6 +10,8 @@ export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[],ge
  assert(duration>=20&&duration<=60,'動画尺は20〜60秒が必要です。');
  const byId=new Map(assets.map(a=>[a.id,a]));
  const scenes=[];
+ let imageIndex=0;
+ const vary=repairIssues.includes('scene_variety'),explain=repairIssues.includes('explanation');
  for(let i=0;i<segments.length;i++) {
   const s=segments[i],visual=normalizeVisual(s),length=s.end-s.start;
   assert(length>0&&Number.isFinite(length),'音声の区間が不正です。');
@@ -25,9 +27,9 @@ export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[],ge
   for(let j=0;j<count;j++) {
    const assetId=candidates[j%candidates.length]||null;
    // Interleave distinct explanatory graphics instead of filling every cut with the same still.
-   const showImage=i===0||i%2===0&&j===0||j>0&&(i+j)%3===0;
-   const image=generatedImages.length&&showImage?generatedImages[i<segments.length/2?0:generatedImages.length-1]:null;
-   const card=!!visual.diagramSpec&&!(i===0&&image)&&(!assetId&&!image||!scenes.some(x=>x.diagramSpec)||j%2===1||i%2===0);
+   const showImage=vary?(i===0||(visual.diagramSpec?j%2===1:j%2===0)):(i===0||i%2===0&&j===0||j>0&&(i+j)%3===0);
+   const image=generatedImages.length&&showImage?generatedImages[vary?imageIndex++%generatedImages.length:i<segments.length/2?0:generatedImages.length-1]:null;
+   const card=!!visual.diagramSpec&&!(i===0&&image)&&(vary&&image?false:!assetId&&!image||!scenes.some(x=>x.diagramSpec)||j%2===1||i%2===0);
    const visualType=card?(visual.diagramSpec.type==='comparison'?'comparison':'diagram'):assetId?'real_footage':image?'generated_image':'science_card';
    // Fallback labels are verbatim terms from the verified sentence, with no causal arrows.
    const keywords=[...new Set(s.text.match(/元の記憶|誤情報|警告|記憶検査|繰り返し|既存信念|年齢差|回数|考え方|年齢|再想起|実験条件|個人差|二酸化炭素|圧力|液体|気体|温度|分子|太陽|光|酸素/g)||[])].slice(0,3);
@@ -38,6 +40,13 @@ export function buildScenePlan(v,segments,assets=[],{repair=0,repairIssues=[],ge
    scenes.push({index:scenes.length,segmentIndex:i,sentence:s.text,start,end,duration:end-start,visualType,assetId:card?null:assetId,imageId:!card&&!assetId?image?.id||null:null,effect,variant:(i+j+repair)%3,layout:j===0?(i%2?'timeline':'overview'):j%2?'focus':'overview',overlay:i===0&&Array.from(s.text).length<=18?s.text:visual.overlay,callout,focus:visual.focus,sourceIds:card?visual.diagramSpec.sourceIds:s.sourceIds||[],activeStep:card?(j+repair)%visual.diagramSpec.labels.length:null,diagramSpec:card?visual.diagramSpec:undefined,labels:fallbackLabels,sourceOffset:effect==='replay'?0:(i*2+j*1.2),transition:scenes.length?'cut':'opening',hook:i===0});
   }
  }
+ // A rejected hook gets a visibly different detail shot inside the first two
+ // seconds. Narration/captions keep their original continuous timestamps.
+ if(repairIssues.includes('hook')&&scenes[0]?.imageId&&scenes[0].duration>=1.8){
+  const s=scenes[0],cut=Math.round((s.start+1)*30)/30;
+  scenes.splice(0,1,{...s,end:cut,duration:cut-s.start},{...s,start:cut,duration:s.end-cut,variant:(s.variant+1)%3,effect:'zoom',hookDetail:true,transition:'cut'});
+ }
+ if(explain)for(const s of scenes)if(s.diagramSpec)s.layout=s.layout==='overview'?'focus':'overview';
  // Short measured sentences can underfill the target count. Split the longest scene.
  while(scenes.length<minimumScenes(duration)) {
   let k=0;scenes.forEach((s,i)=>{if(s.duration>scenes[k].duration)k=i;});
