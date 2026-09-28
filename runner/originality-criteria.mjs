@@ -1,3 +1,7 @@
+const score={type:'number',minimum:0,maximum:100};
+const properties={originality:score,commentary:score,editing:score,educational:score,entertainment:score,copyrightRisk:score,reusedRisk:score,confidence:{type:'number',minimum:0,maximum:1},reason:{type:'string'},fix:{type:'string'}};
+export const ORIGINALITY_REVIEW_SCHEMA={type:'object',properties,required:Object.keys(properties),additionalProperties:false};
+
 // Criteria for an educational edit, not a scientific novelty competition.
 // These instructions never rewrite scores or override a rejection.
 export const ORIGINALITY_CRITERIA=`採点前に次の評価基準を適用する。
