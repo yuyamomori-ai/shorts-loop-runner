@@ -21,7 +21,7 @@ test('image spending shares the monetary/daily guard and settles measured tokens
 });
 test('generated images are sourced to verified narration and cached across visual repairs',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'loop-art-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));let calls=0;
- const v=video(),ai={image:async(prompt,file)=>{calls++;writeFileSync(file,'fixture-'+calls);assert(prompt.includes('NOT a dark'));return {model:'fixture',size:'1024x1536',quality:'medium'};}};
+ const v=video(),ai={image:async(prompt,file)=>{calls++;writeFileSync(file,'fixture-'+calls);assert(prompt.includes('NOT a dark'));assert(prompt.includes('no people, human faces'));return {model:'fixture',size:'1024x1536',quality:'medium'};}};
  await assert.rejects(prepareGeneratedArt(v,{directory,ai}),/事実確認/);assert.equal(calls,0);
  v.verifiedContentHash=hash(JSON.stringify(visualClaims(v)));const art=await prepareGeneratedArt(v,{directory,ai});assert.equal(calls,2);await prepareGeneratedArt(v,{directory,ai});assert.equal(calls,2);
  const segments=v.segments.map((s,i)=>({...s,start:i*4,end:(i+1)*4})),scenes=buildScenePlan(v,segments,[],{generatedImages:art});assert.equal(scenes[0].visualType,'generated_image');assert.equal(scenes[0].diagramSpec,undefined);assert(scenes.some(s=>s.diagramSpec));assert(scenes.some(s=>s.imageId==='generated-1'));assert.equal(sceneFeatures(scenes,24).realFootageRatio,0);assert(scenes.some(s=>!s.imageId&&!s.assetId));assert(scenes.filter(s=>s.imageId).length<scenes.length*.7);
