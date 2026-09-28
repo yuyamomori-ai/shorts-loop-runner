@@ -1,10 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {groundPlan,sourceUrlKey,repairPlanShape,validPlanShape,normalizeCitedSegment,prioritizedSourceUrls,originalityRepairPrompt} from '../runner/planning.mjs';
-import {trustedSource} from '../runner/providers.mjs';
+import {trustedSource,OpenAI} from '../runner/providers.mjs';
+import {MAX_SEARCH_CALLS} from '../runner/budget.mjs';
 const url='https://spaceplace.nasa.gov/blue-sky/en/';
 const candidate={value:{genre:'科学',hook:'question',structure:'story',sources:[{id:'bad',url}],segments:[],risk:'none'},sources:[]};
 const evidence=url=>({url,title:'NASA science',sha256:'fixture-hash',text:'Retrieved primary source. '.repeat(50),fetchedAt:new Date().toISOString()});
+test('paid planning searches public primary evidence within the existing call cap',async t=>{
+ let calls=0,booked=0,settled=0;
+ t.mock.method(globalThis,'fetch',async(request,options)=>{
+  calls++;assert.equal(request,'https://api.openai.com/v1/responses');
+  const body=JSON.parse(options.body),domains=body.tools[0].filters.allowed_domains;
+  assert.equal(body.max_tool_calls,MAX_SEARCH_CALLS);
+  assert(domains.includes('pubmed.ncbi.nlm.nih.gov'));assert(domains.includes('pmc.ncbi.nlm.nih.gov'));
+  assert(domains.includes('nasa.gov'));assert(!domains.includes('nature.com'));assert(!domains.includes('science.org'));
+  return new Response(JSON.stringify({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(candidate.value)}]}]}),{status:200,headers:{'Content-Type':'application/json'}});
+ });
+ const ai=Object.assign(Object.create(OpenAI.prototype),{model:'gpt-5-mini',key:'test-only',budget:spec=>{booked++;assert(spec.search);return {id:'test'};},recordUsage:()=>{settled++;}});
+ await ai.response('Plan from public evidence',{search:true});
+ assert.equal(calls,1);assert.equal(booked,1);assert.equal(settled,1);
+ assert.equal(trustedSource('https://accounts.springernature.com/'),false);
+});
 test('one format repair preserves original citations and strategy; it cannot erase a risk',async()=>{
  let calls=0;const ai={response:async()=>{calls++;return {value:{risk:'none',genre:'invented',sources:[{id:'invented'}],title:'雲の色は？',segments:Array.from({length:6},()=>({text:'説明',sourceIds:['s1']}))}};}};
  const repaired=await repairPlanShape(ai,candidate);assert(validPlanShape(repaired.value));assert.equal(calls,1);assert.deepEqual(repaired.value.sources,candidate.value.sources);assert.equal(repaired.value.genre,candidate.value.genre);

@@ -85,7 +85,11 @@ export class OpenAI {
   // the existing output allowance. Independent fact and visual reviews retain
   // their normal reasoning settings; no budget ceiling is increased.
   if(search&&/^gpt-5-mini(?:-|$)/.test(this.model))body.reasoning={effort:'low'};
-  if(search){body.max_tool_calls=MAX_SEARCH_CALLS;body.tools=[{type:'web_search',filters:{allowed_domains:['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','nasa.gov','science.org','nature.com','pnas.org','apa.org','nih.gov','nist.gov','noaa.gov','jstage.jst.go.jp']}}];body.include=['web_search_call.action.sources'];}
+  // Automatic planning needs public article prose. Publisher login redirects
+  // repeatedly exhausted the four-source fetch allowance; use public research
+  // APIs and official explanations for discovery, without widening retrieval
+  // permissions or spending an extra search/repair call.
+  if(search){body.max_tool_calls=MAX_SEARCH_CALLS;body.tools=[{type:'web_search',filters:{allowed_domains:['pubmed.ncbi.nlm.nih.gov','pmc.ncbi.nlm.nih.gov','nasa.gov','nih.gov','nist.gov','noaa.gov']}}];body.include=['web_search_call.action.sources'];}
   const reservation=this.budget({kind:'response',model:this.model,search});let response;
   try{response=await jsonFetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){this.rejectRequest(reservation,e);throw e;}
   this.recordUsage(reservation,{usage:response.usage,searchCalls:(response.output||[]).filter(x=>x.type==='web_search_call').length});
